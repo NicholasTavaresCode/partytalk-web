@@ -1,81 +1,96 @@
-# PartyTalk
+# PartyTalk (web)
 
-Practise a new language out loud in small **live group rooms**, guided by a friendly **AI host** — plus a faithful **IELTS exam simulator** for solo test prep. This repository is the **frontend only** (no backend yet). English is the only supported practice language for now; the UI is already built to welcome more.
+Frontend for **PartyTalk** — live group English-practice **rooms** where an AI host listens to the
+conversation and suggests fresh topics in real time, then delivers a highlights + suggestions
+**report** at the end. Includes a parked IELTS exam simulator (still on local mock data).
 
-The IELTS simulation screens reproduce the official computer-delivered exam look, following the **Google Stitch** design ("Standard Academic Assessment System"). The marketing and group-practice surfaces extend that same navy/gold brand with a warmer display font.
+This app talks to the **PartyTalk API** (NestJS) and authenticates with **Firebase (Google sign-in)**.
+
+## Ports
+
+| Service | Port | Notes |
+| --- | --- | --- |
+| PartyTalk API | `3000` | Runs separately; Swagger at http://localhost:3000/docs |
+| This web app | `3001` | `npm run dev` (already pinned to `-p 3001`) |
+
+## Setup
+
+Requires Node ≥ 18.18 (developed on Node 22).
+
+```bash
+npm install
+cp .env.local.example .env.local   # then fill in the Firebase web keys
+npm run dev                         # http://localhost:3001
+```
+
+`.env.local` values:
+
+- `NEXT_PUBLIC_API_BASE_URL` — REST base, default `http://localhost:3000/api/v1`
+- `NEXT_PUBLIC_API_SOCKET_URL` — Socket.IO origin, default `http://localhost:3000` (namespace `/rooms`)
+- `NEXT_PUBLIC_FIREBASE_*` — web config for the **partytalk-hml** Firebase project, with **Google
+  sign-in enabled** (Firebase console → Project settings → Your apps → Web app). Until these are
+  filled in, the app runs but the sign-in screen shows a "not configured" notice.
+
+## How the room feature works
+
+1. **Auth** — Google sign-in → Firebase ID token, attached as `Authorization: Bearer` on every REST
+   call and in the Socket.IO handshake (`auth.token`). First sign-in prompts a quick profile
+   (`PUT /users/me`).
+2. **Browse / create** — `GET /rooms`, `POST /rooms` (topic + AI host persona + max 5 participants).
+3. **Live loop** — join via REST, then connect the `rooms` Socket.IO namespace. Each client
+   transcribes its own mic with the **browser Web Speech API** and emits `transcript` events (typed
+   fallback where the API is unavailable, e.g. Firefox). The backend AI facilitator pushes
+   `topicSuggested` events (trigger: volume / silence / manual) which render live; `presence` tracks
+   who's in.
+4. **Report** — the owner ends the room → backend generates the `RoomReport` (summary, highlights,
+   suggestions, topics explored), delivered on `sessionEnded` and the room's `report` field.
+5. **Voice (peer-to-peer)** — a WebRTC **P2P mesh** client is wired to the `webrtc:*` signaling
+   contract in the API's `docs/audio-architecture.md`. That relay is a **backend milestone (M1) not
+   yet implemented**, so peer audio degrades gracefully (mic acquired, waiting for signaling) until
+   the backend ships it. The AI-topic-suggestion loop above works today without it.
 
 ## Tech stack
 
 - **Next.js 16** (App Router) + **React 19**
-- **Tailwind CSS v3** — design tokens ported 1:1 from the Stitch design system (`tailwind.config.ts`)
-- **TanStack React Query v5** — wired up now with mock fetchers; API-ready (see below)
-- **Google Fonts** via `next/font` — **Arimo** (exam/body) and **Sora** (marketing display)
-- **lucide-react** icons
+- **Tailwind CSS v3** (design tokens from the Google Stitch IELTS design system)
+- **TanStack React Query v5** + a typed `api` client (`src/lib/apiClient.ts`)
+- **Firebase Auth** (`src/lib/firebase.ts`, `src/components/auth/*`)
+- **socket.io-client** (`src/lib/socket.ts`, `src/lib/useRoomSocket.ts`)
+- **WebRTC** mesh (`src/lib/useVoiceMesh.ts`) + **Web Speech API** (`src/lib/useSpeechRecognition.ts`)
+- Google Fonts **Arimo** (body/exam) + **Sora** (marketing display), **lucide-react** icons
 
-## Getting started
-
-Requires Node.js ≥ 18.18 (developed on Node 22).
-
-```bash
-npm install
-npm run dev     # http://localhost:3000
-```
-
-Other scripts: `npm run build` (production build), `npm start` (serve the build), `npm run lint`.
-
-## Routes
-
-| Route | Description |
-| --- | --- |
-| `/` | Marketing landing page |
-| `/practice` | Browse live group rooms (filter by level, search) |
-| `/practice/[roomId]` | Immersive live room: participants, AI guide, live transcript, controls |
-| `/ielts` | IELTS hub — overview of the four papers (solo mode) |
-| `/ielts/listening` | Listening simulation — once-only audio, form completion, MCQ |
-| `/ielts/reading` | Reading simulation — split-screen passage + heading matching |
-| `/ielts/writing` | Writing simulation — chart prompt, live word count, Task 1/2 |
-| `/ielts/speaking` | Speaking simulation — AI examiner, waveform, mic recorder |
-
-## Project structure
+## Structure
 
 ```
 src/
   app/
-    layout.tsx              Root layout (fonts + React Query provider)
-    page.tsx                Landing
-    practice/               Rooms browser + live room
-    ielts/                  Hub + 4 exam simulators
+    page.tsx                 Public marketing landing
+    practice/                Rooms browser + live room (auth-gated)
+    ielts/                   Parked IELTS simulator (mock data)
   components/
-    brand/                  Logo, wordmark
-    site/                   Marketing header / footer / shell
-    marketing/              Hero room preview, landing visuals
-    practice/               Room cards, avatars, live-room UI
-    ielts/                  ExamShell (header/timer/footer), palette, chart, examiner
-    ui/                     Button, Container
+    auth/                    AuthProvider, RequireAuth, SignInScreen
+    profile/                 Onboarding + ProfileGate
+    app/                     AppHeader, LoadingScreen
+    practice/                RoomsBrowser, RoomCard, room/RoomExperience
+    ielts/, brand/, site/, marketing/, ui/
   lib/
-    api/                    Mock data + fetchers (rooms, ielts)
-    queries.ts              React Query hooks + query keys
-    types.ts, fonts.ts, cn.ts
+    apiClient.ts, socket.ts, firebase.ts, env.ts
+    api/rooms.ts, api/users.ts, api/ielts.ts
+    queries.ts               React Query hooks + keys
+    useRoomSocket.ts, useVoiceMesh.ts, useSpeechRecognition.ts
+    types.ts, cn.ts
 ```
 
-## Data layer (React Query, API-ready)
+## Routes
 
-There is no backend yet, so `src/lib/api/*` returns data from `Promise`-based mock fetchers. Every component reads data through the hooks in `src/lib/queries.ts`. When a real API arrives, only the fetcher bodies change:
-
-```ts
-// before
-export async function fetchRooms() { return delay(ROOMS); }
-// after
-export async function fetchRooms() { return fetch("/api/rooms").then((r) => r.json()); }
-```
-
-Components and hooks stay untouched. Static exam content is seeded with `initialData` so the simulators render instantly.
-
-## Design system
-
-`tailwind.config.ts` defines the exam palette (`primary` navy `#001e40`, `secondary` red, `tertiary-fixed` gold `#ffe16d`), the Arimo type scale (`text-headline-lg`, `text-body-lg`, `text-display-timer`, …) and spacing tokens (`header-height`, `nav-footer-height`, `gutter`). The exam chrome lives in `components/ielts/ExamShell.tsx`.
+| Route | Auth | Description |
+| --- | --- | --- |
+| `/` | public | Marketing landing |
+| `/practice` | required | Browse + create rooms |
+| `/practice/[roomId]` | required | Live room: transcript, topic suggestions, report |
+| `/ielts`, `/ielts/*` | public | Parked IELTS simulator (mock) |
 
 ## Notes
 
-- Frontend only — interactions (audio, recording, timers, chat) are simulated on the client.
-- English is the only active practice language; other languages appear as "coming soon".
+- English is the only active practice language; others show "coming soon".
+- The IELTS pages remain on local mock fetchers (`src/lib/api/ielts.ts`) — parked, not wired to the API yet.
