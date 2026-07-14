@@ -1,5 +1,5 @@
 import { env } from "./env";
-import { getIdToken } from "./firebase";
+import { getIdToken } from "./googleAuth";
 
 /** Typed error carrying the API's HTTP status (401 → sign in, 429 → rate limit, …). */
 export class ApiError extends Error {

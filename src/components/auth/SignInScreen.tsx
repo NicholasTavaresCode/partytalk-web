@@ -1,37 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sparkles, Users, MessageSquareText, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { renderSignInButton } from "@/lib/googleAuth";
 import { Wordmark } from "@/components/brand/Wordmark";
 
-function GoogleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
-      <path fill="#4285F4" d="M23.06 12.25c0-.85-.08-1.67-.22-2.45H12v4.64h6.2a5.3 5.3 0 0 1-2.3 3.48v2.9h3.72c2.18-2 3.44-4.97 3.44-8.57z" />
-      <path fill="#34A853" d="M12 24c3.12 0 5.73-1.03 7.64-2.8l-3.72-2.9c-1.03.7-2.35 1.1-3.92 1.1-3.02 0-5.57-2.04-6.49-4.78H1.66v3c1.9 3.78 5.8 6.38 10.34 6.38z" />
-      <path fill="#FBBC05" d="M5.51 14.62A7.2 7.2 0 0 1 5.13 12c0-.91.16-1.79.38-2.62v-3H1.66A12 12 0 0 0 .38 12c0 1.94.46 3.77 1.28 5.62l3.85-3z" />
-      <path fill="#EA4335" d="M12 4.75c1.7 0 3.23.58 4.43 1.73l3.3-3.3C17.73 1.15 15.12 0 12 0 7.46 0 3.56 2.6 1.66 6.38l3.85 3c.92-2.74 3.47-4.63 6.49-4.63z" />
-    </svg>
-  );
-}
-
 export function SignInScreen() {
-  const { configured, signIn } = useAuth();
+  const { configured } = useAuth();
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const buttonRef = useRef<HTMLDivElement>(null);
 
-  const onSignIn = async () => {
-    setError(null);
-    setBusy(true);
-    try {
-      await signIn();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Sign-in failed");
-    } finally {
-      setBusy(false);
-    }
-  };
+  useEffect(() => {
+    if (!configured || !buttonRef.current) return;
+    renderSignInButton(buttonRef.current).catch((e) =>
+      setError(e instanceof Error ? e.message : "Could not load Google sign-in"),
+    );
+  }, [configured]);
 
   return (
     <div className="relative grid min-h-screen place-items-center overflow-hidden bg-white px-6">
@@ -62,23 +47,17 @@ export function SignInScreen() {
         </ul>
 
         {configured ? (
-          <button
-            onClick={onSignIn}
-            disabled={busy}
-            className="mt-7 flex h-12 w-full items-center justify-center gap-3 rounded-lg border border-outline bg-white font-semibold text-on-surface transition-colors hover:bg-surface-container-low disabled:opacity-60"
-          >
-            <GoogleIcon />
-            {busy ? "Signing in…" : "Continue with Google"}
-          </button>
+          <div ref={buttonRef} className="mt-7 flex min-h-[44px] justify-center" />
         ) : (
           <div className="mt-7 flex items-start gap-3 rounded-lg border border-tertiary-fixed-dim bg-tertiary-fixed/20 p-4 text-sm text-on-surface">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-tertiary" />
             <div>
-              <p className="font-semibold">Firebase isn&apos;t configured yet</p>
+              <p className="font-semibold">Google sign-in isn&apos;t configured yet</p>
               <p className="mt-1 text-on-surface-variant">
-                Add the <code className="rounded bg-surface-container px-1">partytalk-hml</code> web
-                keys to <code className="rounded bg-surface-container px-1">.env.local</code> and
-                restart the dev server.
+                Add your OAuth web client ID as{" "}
+                <code className="rounded bg-surface-container px-1">NEXT_PUBLIC_GOOGLE_CLIENT_ID</code>{" "}
+                in <code className="rounded bg-surface-container px-1">.env.local</code> and restart
+                the dev server.
               </p>
             </div>
           </div>

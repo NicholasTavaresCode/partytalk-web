@@ -5,17 +5,20 @@
 export const env = {
   apiBaseUrl: process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3000/api/v1",
   socketUrl: process.env.NEXT_PUBLIC_API_SOCKET_URL ?? "http://localhost:3000",
-  firebase: {
-    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? "",
-    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ?? "",
-    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "",
-    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ?? "",
-    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ?? "",
-    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID ?? "",
-  },
+  /** OAuth 2.0 Web client ID for "Sign in with Google" (Google Cloud console). */
+  googleClientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "",
+  /**
+   * Dev-only escape hatch: skip the Google sign-in gate so the app renders and
+   * fires API calls without going through GIS. Set `NEXT_PUBLIC_DISABLE_AUTH=true`.
+   */
+  authDisabled: process.env.NEXT_PUBLIC_DISABLE_AUTH === "true",
+  /**
+   * Dev-only: a Google ID token attached as `Authorization: Bearer` when auth is
+   * disabled, so protected endpoints can be tested (paste one from Swagger's
+   * "Authorize" dialog). Optional — without it, requests go out unauthenticated.
+   */
+  devBearerToken: process.env.NEXT_PUBLIC_DEV_BEARER_TOKEN ?? "",
 };
 
-/** True once the Firebase web keys are filled in (see .env.local.example). */
-export const firebaseConfigured = Boolean(
-  env.firebase.apiKey && env.firebase.appId && env.firebase.projectId,
-);
+/** True once the Google OAuth web client ID is filled in (see .env.local.example). */
+export const googleConfigured = Boolean(env.googleClientId);

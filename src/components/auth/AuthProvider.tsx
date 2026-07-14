@@ -1,12 +1,18 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { onIdTokenChanged, type User as FirebaseUser } from "firebase/auth";
-import { firebaseConfigured } from "@/lib/env";
-import { getFirebaseAuth, signInWithGoogle, signOut } from "@/lib/firebase";
+import { env, googleConfigured } from "@/lib/env";
+import {
+  getDevUser,
+  onAuthChange,
+  promptSignIn,
+  restoreSession,
+  signOut,
+  type AuthUser,
+} from "@/lib/googleAuth";
 
 interface AuthState {
-  user: FirebaseUser | null;
+  user: AuthUser | null;
   loading: boolean;
   configured: boolean;
   signIn: () => Promise<void>;
@@ -16,24 +22,33 @@ interface AuthState {
 const AuthContext = createContext<AuthState | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Dev auth-bypass: skip GIS entirely and hand down a stand-in user.
+  const [user, setUser] = useState<AuthUser | null>(env.authDisabled ? getDevUser() : null);
+  // Only block on a session restore when Google sign-in is actually configured.
+  const [loading, setLoading] = useState(googleConfigured && !env.authDisabled);
 
   useEffect(() => {
-    const auth = getFirebaseAuth();
-    if (!auth) {
-      setLoading(false);
-      return;
-    }
-    return onIdTokenChanged(auth, (u) => {
+    if (env.authDisabled || !googleConfigured) return;
+    const unsub = onAuthChange((u) => {
       setUser(u);
       setLoading(false);
     });
+    // Silently restore a returning user; stop the spinner regardless of outcome.
+    restoreSession()
+      .catch(() => {})
+      .finally(() => setLoading(false));
+    return unsub;
   }, []);
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, configured: firebaseConfigured, signIn: signInWithGoogle, signOut }}
+      value={{
+        user,
+        loading,
+        configured: googleConfigured || env.authDisabled,
+        signIn: promptSignIn,
+        signOut,
+      }}
     >
       {children}
     </AuthContext.Provider>

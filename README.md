@@ -4,7 +4,7 @@ Frontend for **PartyTalk** — live group English-practice **rooms** where an AI
 conversation and suggests fresh topics in real time, then delivers a highlights + suggestions
 **report** at the end. Includes a parked IELTS exam simulator (still on local mock data).
 
-This app talks to the **PartyTalk API** (NestJS) and authenticates with **Firebase (Google sign-in)**.
+This app talks to the **PartyTalk API** (NestJS) and authenticates with **Google Identity Services ("Sign in with Google")** — the API verifies the Google ID token directly.
 
 ## Ports
 
@@ -19,7 +19,7 @@ Requires Node ≥ 18.18 (developed on Node 22).
 
 ```bash
 npm install
-cp .env.local.example .env.local   # then fill in the Firebase web keys
+cp .env.local.example .env.local   # then fill in the Google OAuth client ID
 npm run dev                         # http://localhost:3001
 ```
 
@@ -27,14 +27,15 @@ npm run dev                         # http://localhost:3001
 
 - `NEXT_PUBLIC_API_BASE_URL` — REST base, default `http://localhost:3000/api/v1`
 - `NEXT_PUBLIC_API_SOCKET_URL` — Socket.IO origin, default `http://localhost:3000` (namespace `/rooms`)
-- `NEXT_PUBLIC_FIREBASE_*` — web config for the **partytalk-hml** Firebase project, with **Google
-  sign-in enabled** (Firebase console → Project settings → Your apps → Web app). Until these are
-  filled in, the app runs but the sign-in screen shows a "not configured" notice.
+- `NEXT_PUBLIC_GOOGLE_CLIENT_ID` — OAuth 2.0 **Web application** client ID (Google Cloud console →
+  APIs & Services → Credentials). Add `http://localhost:3001` to the client's **Authorized
+  JavaScript origins**. Until it's filled in, the app runs but the sign-in screen shows a "not
+  configured" notice.
 
 ## How the room feature works
 
-1. **Auth** — Google sign-in → Firebase ID token, attached as `Authorization: Bearer` on every REST
-   call and in the Socket.IO handshake (`auth.token`). First sign-in prompts a quick profile
+1. **Auth** — "Sign in with Google" → Google ID token, attached as `Authorization: Bearer` on every
+   REST call and in the Socket.IO handshake (`auth.token`). First sign-in prompts a quick profile
    (`PUT /users/me`).
 2. **Browse / create** — `GET /rooms`, `POST /rooms` (topic + AI host persona + max 5 participants).
 3. **Live loop** — join via REST, then connect the `rooms` Socket.IO namespace. Each client
@@ -54,7 +55,7 @@ npm run dev                         # http://localhost:3001
 - **Next.js 16** (App Router) + **React 19**
 - **Tailwind CSS v3** (design tokens from the Google Stitch IELTS design system)
 - **TanStack React Query v5** + a typed `api` client (`src/lib/apiClient.ts`)
-- **Firebase Auth** (`src/lib/firebase.ts`, `src/components/auth/*`)
+- **Google Identity Services** (`src/lib/googleAuth.ts`, `src/components/auth/*`)
 - **socket.io-client** (`src/lib/socket.ts`, `src/lib/useRoomSocket.ts`)
 - **WebRTC** mesh (`src/lib/useVoiceMesh.ts`) + **Web Speech API** (`src/lib/useSpeechRecognition.ts`)
 - Google Fonts **Arimo** (body/exam) + **Sora** (marketing display), **lucide-react** icons
@@ -74,7 +75,7 @@ src/
     practice/                RoomsBrowser, RoomCard, room/RoomExperience
     ielts/, brand/, site/, marketing/, ui/
   lib/
-    apiClient.ts, socket.ts, firebase.ts, env.ts
+    apiClient.ts, socket.ts, googleAuth.ts, env.ts
     api/rooms.ts, api/users.ts, api/ielts.ts
     queries.ts               React Query hooks + keys
     useRoomSocket.ts, useVoiceMesh.ts, useSpeechRecognition.ts
