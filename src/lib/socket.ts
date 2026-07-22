@@ -16,7 +16,10 @@ export async function connectRoomsSocket(): Promise<RoomsSocket> {
   const token = await getIdToken();
   return io(`${env.socketUrl}/rooms`, {
     auth: { token },
-    transports: ["websocket"],
+    // Start with HTTP long-polling, then upgrade to WebSocket. This survives
+    // reverse proxies that don't forward the WS upgrade (websocket-only would
+    // fail outright there).
+    transports: ["polling", "websocket"],
     autoConnect: true,
     reconnection: true,
   });

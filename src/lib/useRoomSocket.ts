@@ -44,8 +44,8 @@ export function useRoomSocket(roomId: string): RoomSocketState {
     let s: RoomsSocket | undefined;
 
     // Seed history so late joiners see the conversation so far.
-    void roomsApi.getTranscript(roomId, 200).then((t) => active && setSegments(t)).catch(() => {});
-    void roomsApi.getSuggestions(roomId, 50).then((s2) => active && setSuggestions(s2)).catch(() => {});
+    void roomsApi.getTranscript(roomId, 100).then((t) => active && setSegments(t)).catch(() => { });
+    void roomsApi.getSuggestions(roomId, 50).then((s2) => active && setSuggestions(s2)).catch(() => { });
 
     connectRoomsSocket()
       .then((sock) => {

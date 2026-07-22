@@ -170,7 +170,7 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
         <div className="mt-5 flex items-center justify-between">
           <span className="text-sm font-semibold text-on-surface">Max participants</span>
           <div className="flex items-center gap-2">
-            {[2, 3, 4, 5].map((n) => (
+            {[1, 2, 3, 4, 5].map((n) => (
               <button
                 type="button"
                 key={n}
@@ -188,7 +188,7 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
         <p className="mt-1.5 text-xs text-on-surface-variant">
-          Capped at 5 while voice runs over a peer-to-peer mesh.
+          Pick 1 for a solo test room. Capped at 5 while voice runs over a peer-to-peer mesh.
         </p>
 
         {create.isError && (
