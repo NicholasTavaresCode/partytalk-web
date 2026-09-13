@@ -6,18 +6,6 @@ import { ApiError } from "@/lib/apiClient";
 import { roomsApi } from "@/lib/api/rooms";
 import { usersApi } from "@/lib/api/users";
 import type { CreateRoomInput, UpsertProfile } from "@/lib/types";
-import {
-  IELTS_MODULES,
-  LISTENING_TEST,
-  READING_TEST,
-  SPEAKING_TEST,
-  WRITING_TASKS,
-  fetchIeltsModules,
-  fetchListeningTest,
-  fetchReadingTest,
-  fetchSpeakingTest,
-  fetchWritingTasks,
-} from "@/lib/api/ielts";
 
 export const queryKeys = {
   me: ["me"] as const,
@@ -25,11 +13,6 @@ export const queryKeys = {
   room: (id: string) => ["rooms", id] as const,
   transcript: (id: string) => ["rooms", id, "transcript"] as const,
   suggestions: (id: string) => ["rooms", id, "suggestions"] as const,
-  ieltsModules: ["ielts", "modules"] as const,
-  listening: ["ielts", "listening"] as const,
-  reading: ["ielts", "reading"] as const,
-  writing: ["ielts", "writing"] as const,
-  speaking: ["ielts", "speaking"] as const,
 };
 
 /* --------------------------------- Users -------------------------------- */
@@ -99,42 +82,4 @@ export function useRoomLifecycle(id: string) {
     end: useMutation({ mutationFn: () => roomsApi.end(id), onSuccess: invalidate }),
     suggest: useMutation({ mutationFn: () => roomsApi.suggestTopic(id) }),
   };
-}
-
-/* -------------------------- IELTS (parked, mock) ------------------------- */
-
-export function useIeltsModules() {
-  return useQuery({
-    queryKey: queryKeys.ieltsModules,
-    queryFn: fetchIeltsModules,
-    initialData: IELTS_MODULES,
-  });
-}
-export function useListeningTest() {
-  return useQuery({
-    queryKey: queryKeys.listening,
-    queryFn: fetchListeningTest,
-    initialData: LISTENING_TEST,
-  });
-}
-export function useReadingTest() {
-  return useQuery({
-    queryKey: queryKeys.reading,
-    queryFn: fetchReadingTest,
-    initialData: READING_TEST,
-  });
-}
-export function useWritingTasks() {
-  return useQuery({
-    queryKey: queryKeys.writing,
-    queryFn: fetchWritingTasks,
-    initialData: WRITING_TASKS,
-  });
-}
-export function useSpeakingTest() {
-  return useQuery({
-    queryKey: queryKeys.speaking,
-    queryFn: fetchSpeakingTest,
-    initialData: SPEAKING_TEST,
-  });
 }

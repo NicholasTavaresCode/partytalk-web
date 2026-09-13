@@ -1,18 +1,5 @@
-import Link from "next/link";
 import type { Metadata } from "next";
-import {
-  ArrowRight,
-  Sparkles,
-  Users,
-  MessageSquareText,
-  Mic,
-  Globe,
-  Check,
-  Headphones,
-  BookOpen,
-  PenLine,
-  GraduationCap,
-} from "lucide-react";
+import { ArrowRight, Sparkles, Users, MessageSquareText, Mic, Globe, Check } from "lucide-react";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
@@ -22,7 +9,7 @@ import { cn } from "@/lib/cn";
 
 export const metadata: Metadata = {
   description:
-    "Join small live rooms to practise English out loud with learners around the world, guided by a friendly AI host. Plus a faithful IELTS exam simulator.",
+    "Join small live rooms to practise English out loud with learners around the world, guided by a friendly AI host.",
 };
 
 const LANGUAGES = [
@@ -68,11 +55,6 @@ const FEATURES = [
     title: "Learners worldwide",
     body: "Practise with people from dozens of countries and hear English the way it's really spoken.",
   },
-  {
-    icon: GraduationCap,
-    title: "Serious exam prep",
-    body: "Switch to IELTS mode for a faithful, timed simulation of all four exam papers.",
-  },
 ];
 
 export default function HomePage() {
@@ -102,9 +84,6 @@ export default function HomePage() {
               <Button href="/practice" size="lg">
                 Start a group room
                 <ArrowRight className="h-5 w-5" />
-              </Button>
-              <Button href="/ielts" size="lg" variant="outline">
-                Practise for IELTS
               </Button>
             </div>
 
@@ -212,62 +191,6 @@ export default function HomePage() {
                 </div>
               </div>
             ))}
-          </div>
-        </Container>
-      </section>
-
-      {/* ------------------------------- IELTS PROMO ----------------------------- */}
-      <section className="bg-white py-20">
-        <Container>
-          <div className="overflow-hidden rounded-[2rem] bg-primary text-on-primary">
-            <div className="grid gap-10 p-8 sm:p-12 lg:grid-cols-2 lg:items-center">
-              <div>
-                <span className="inline-flex items-center gap-2 rounded-pill bg-white/10 px-3 py-1.5 text-sm font-medium">
-                  <GraduationCap className="h-4 w-4" /> Solo IELTS mode
-                </span>
-                <h2 className="mt-5 font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
-                  Sit the IELTS before you sit the IELTS.
-                </h2>
-                <p className="mt-4 max-w-lg text-white/80">
-                  A faithful, timed simulation of the computer-delivered exam — the same navy chrome,
-                  split-screen reading, once-only audio and on-screen word count. Practise all four
-                  papers on your own.
-                </p>
-                <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-                  <Button href="/ielts" size="lg" variant="white">
-                    Explore IELTS mode
-                    <ArrowRight className="h-5 w-5" />
-                  </Button>
-                  <Button
-                    href="/ielts/reading"
-                    size="lg"
-                    variant="ghost"
-                    className="text-white hover:bg-white/10"
-                  >
-                    Try a reading test
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { icon: Headphones, label: "Listening", href: "/ielts/listening", meta: "30 min · 40 Q" },
-                  { icon: BookOpen, label: "Reading", href: "/ielts/reading", meta: "60 min · 40 Q" },
-                  { icon: PenLine, label: "Writing", href: "/ielts/writing", meta: "60 min · 2 tasks" },
-                  { icon: Mic, label: "Speaking", href: "/ielts/speaking", meta: "11–14 min · 3 parts" },
-                ].map((m) => (
-                  <Link
-                    key={m.label}
-                    href={m.href}
-                    className="group rounded-2xl border border-white/15 bg-white/5 p-5 transition-colors hover:bg-white/10"
-                  >
-                    <m.icon className="h-6 w-6 text-tertiary-fixed" />
-                    <p className="mt-3 text-lg font-bold">{m.label}</p>
-                    <p className="text-sm text-white/70">{m.meta}</p>
-                  </Link>
-                ))}
-              </div>
-            </div>
           </div>
         </Container>
       </section>

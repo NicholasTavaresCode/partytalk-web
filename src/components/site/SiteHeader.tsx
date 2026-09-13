@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/Button";
 const NAV = [
   { label: "How it works", href: "/#how" },
   { label: "Group Practice", href: "/practice" },
-  { label: "IELTS Prep", href: "/ielts" },
 ];
 
 export function SiteHeader() {

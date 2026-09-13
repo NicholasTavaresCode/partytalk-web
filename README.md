@@ -2,7 +2,7 @@
 
 Frontend for **PartyTalk** — live group English-practice **rooms** where an AI host listens to the
 conversation and suggests fresh topics in real time, then delivers a highlights + suggestions
-**report** at the end. Includes a parked IELTS exam simulator (still on local mock data).
+**report** at the end.
 
 This app talks to the **PartyTalk API** (NestJS) and authenticates with **Google Identity Services ("Sign in with Google")** — the API verifies the Google ID token directly.
 
@@ -53,7 +53,7 @@ npm run dev                         # http://localhost:3001
 ## Tech stack
 
 - **Next.js 16** (App Router) + **React 19**
-- **Tailwind CSS v3** (design tokens from the Google Stitch IELTS design system)
+- **Tailwind CSS v3** (design tokens from a Google Stitch design system)
 - **TanStack React Query v5** + a typed `api` client (`src/lib/apiClient.ts`)
 - **Google Identity Services** (`src/lib/googleAuth.ts`, `src/components/auth/*`)
 - **socket.io-client** (`src/lib/socket.ts`, `src/lib/useRoomSocket.ts`)
@@ -67,16 +67,15 @@ src/
   app/
     page.tsx                 Public marketing landing
     practice/                Rooms browser + live room (auth-gated)
-    ielts/                   Parked IELTS simulator (mock data)
   components/
     auth/                    AuthProvider, RequireAuth, SignInScreen
     profile/                 Onboarding + ProfileGate
     app/                     AppHeader, LoadingScreen
     practice/                RoomsBrowser, RoomCard, room/RoomExperience
-    ielts/, brand/, site/, marketing/, ui/
+    brand/, site/, marketing/, ui/
   lib/
     apiClient.ts, socket.ts, googleAuth.ts, env.ts
-    api/rooms.ts, api/users.ts, api/ielts.ts
+    api/rooms.ts, api/users.ts
     queries.ts               React Query hooks + keys
     useRoomSocket.ts, useVoiceMesh.ts, useSpeechRecognition.ts
     types.ts, cn.ts
@@ -89,9 +88,7 @@ src/
 | `/` | public | Marketing landing |
 | `/practice` | required | Browse + create rooms |
 | `/practice/[roomId]` | required | Live room: transcript, topic suggestions, report |
-| `/ielts`, `/ielts/*` | public | Parked IELTS simulator (mock) |
 
 ## Notes
 
 - English is the only active practice language; others show "coming soon".
-- The IELTS pages remain on local mock fetchers (`src/lib/api/ielts.ts`) — parked, not wired to the API yet.

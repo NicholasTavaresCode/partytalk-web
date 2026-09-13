@@ -14,7 +14,6 @@ export interface User {
   email: string;
   displayName: string;
   englishLevel: EnglishLevel;
-  targetIeltsBand?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -22,7 +21,6 @@ export interface User {
 export interface UpsertProfile {
   displayName: string;
   englishLevel: EnglishLevel;
-  targetIeltsBand?: number;
 }
 
 /* ================================= Rooms ================================= */
@@ -120,85 +118,4 @@ export interface ClientToServerEvents {
   "webrtc:offer": (p: { roomId: string; toUid: string; sdp: RTCSessionDescriptionInit }) => void;
   "webrtc:answer": (p: { roomId: string; toUid: string; sdp: RTCSessionDescriptionInit }) => void;
   "webrtc:ice": (p: { roomId: string; toUid: string; candidate: RTCIceCandidateInit }) => void;
-}
-
-/* ============================ IELTS (parked) ============================= */
-
-export type IeltsModuleId = "listening" | "reading" | "writing" | "speaking";
-
-export interface IeltsModuleInfo {
-  id: IeltsModuleId;
-  title: string;
-  duration: string;
-  questions: string;
-  blurb: string;
-  skills: string[];
-}
-
-export interface ListeningOption {
-  value: string;
-  label: string;
-}
-
-export interface ListeningMcq {
-  n: number;
-  prompt: string;
-  options: ListeningOption[];
-}
-
-export interface ListeningTest {
-  part: number;
-  instructions: string;
-  totalQuestions: number;
-  currentQuestion: number;
-  answered: number[];
-  audio: { title: string; duration: string; note: string };
-  form: {
-    title: string;
-    fields: { n: number; label: string; placeholder: string }[];
-    table: { columns: [string, string]; rows: { n: number; item: string; placeholder: string }[] };
-  };
-  mcqs: ListeningMcq[];
-}
-
-export interface ReadingTest {
-  passageNumber: number;
-  passageTitle: string;
-  paragraphs: { label: string; text: string }[];
-  questionRange: string;
-  headingInstructions: string;
-  headings: { numeral: string; text: string }[];
-  matches: { n: number; paragraph: string }[];
-  totalQuestions: number;
-  currentQuestion: number;
-}
-
-export interface WritingTask {
-  id: 1 | 2;
-  label: string;
-  minutes: number;
-  minWords: number;
-  prompt: string;
-  emphasis?: string;
-  chart?: {
-    caption: string;
-    unit: string;
-    months: string[];
-    series: { name: string; color: string; values: number[] }[];
-  };
-}
-
-export interface SpeakingPart {
-  id: number;
-  label: string;
-  title: string;
-  current: { n: number; text: string };
-  questions: string[];
-  cueCard?: { task: string; bullets: string[] };
-}
-
-export interface SpeakingTest {
-  examiner: string;
-  parts: SpeakingPart[];
-  activePart: number;
 }
