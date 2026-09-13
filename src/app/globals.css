@@ -25,18 +25,18 @@
 
 @layer components {
   /* Slim 8px scrollbar for scrolling panes */
-  .exam-scroll::-webkit-scrollbar {
+  .thin-scroll::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
-  .exam-scroll::-webkit-scrollbar-track {
+  .thin-scroll::-webkit-scrollbar-track {
     background: #f2f4f5;
   }
-  .exam-scroll::-webkit-scrollbar-thumb {
+  .thin-scroll::-webkit-scrollbar-thumb {
     background: #c3c6d1;
     border-radius: 4px;
   }
-  .exam-scroll::-webkit-scrollbar-thumb:hover {
+  .thin-scroll::-webkit-scrollbar-thumb:hover {
     background: #737780;
   }
 }

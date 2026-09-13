@@ -18,21 +18,28 @@ import {
   VideoOff,
   Captions,
   X,
+  Shuffle,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useMe, useRoom, useRoomLifecycle } from "@/lib/queries";
 import { useRoomSocket } from "@/lib/useRoomSocket";
 import { useSpeechRecognition } from "@/lib/useSpeechRecognition";
 import { useVoiceMesh } from "@/lib/useVoiceMesh";
+import { useHostVoice } from "@/lib/hostVoice";
+import { currentTopic, type HistoryItem } from "@/lib/roomHistory";
 import { Logo } from "@/components/brand/Logo";
 import { ParticipantAvatar } from "@/components/practice/ParticipantAvatar";
 import { LoadingScreen } from "@/components/app/LoadingScreen";
 import { cn } from "@/lib/cn";
-import type { HostMessage, HostMessageTrigger, RoomReport } from "@/lib/types";
+import type { HostMessage, HostMessageTrigger, RoomReport, TranscriptSegment } from "@/lib/types";
+
+const HOST_NAME = "AI Host";
 
 const TRIGGER: Record<HostMessageTrigger, { label: string; cls: string }> = {
-  volume: { label: "After lots of talk", cls: "bg-primary-fixed text-on-primary-fixed" },
-  silence: { label: "After a pause", cls: "bg-tertiary-fixed text-on-tertiary-fixed" },
+  volume: { label: "Topic covered", cls: "bg-primary-fixed text-on-primary-fixed" },
+  silence: { label: "Room went quiet", cls: "bg-tertiary-fixed text-on-tertiary-fixed" },
   manual: { label: "On request", cls: "bg-secondary/15 text-secondary" },
 };
 
@@ -47,8 +54,10 @@ export function RoomExperience({ roomId }: { roomId: string }) {
   const rt = useRoomSocket(roomId);
 
   const [panelOpen, setPanelOpen] = useState(false);
+  const [hostMuted, setHostMuted] = useState(false);
   const stt = useSpeechRecognition(rt.sendTranscript);
   const voice = useVoiceMesh({ socket: rt.socket, roomId, enabled: room?.status === "live" });
+  const hostVoice = useHostVoice(rt.hostMessages, hostMuted);
 
   // Auto-join once (idempotent server-side; a 409 just means already joined).
   const joinedRef = useRef(false);
@@ -60,8 +69,8 @@ export function RoomExperience({ roomId }: { roomId: string }) {
     }
   }, [room, user, join]);
 
-  // Newest first for the hub; `rt.hostMessages` is already deduped by id.
-  const hostMessages = useMemo(
+  // Newest first for the hub's history; `rt.hostMessages` is already deduped by id.
+  const hostHistory = useMemo(
     () => [...rt.hostMessages].sort((a, b) => b.at.localeCompare(a.at)),
     [rt.hostMessages],
   );
@@ -76,16 +85,24 @@ export function RoomExperience({ roomId }: { roomId: string }) {
 
   const selfName = me?.displayName ?? user?.displayName ?? "You";
   const live = room.status === "live";
+  // `room.topic` is only the opening topic; the host's latest line sets the current one.
+  const topic = currentTopic(rt.hostMessages, room.topic);
 
   return (
     <div className="flex h-screen flex-col bg-[#202124] text-white">
-      {/* Top bar */}
+      {/* Top bar — current topic front and centre */}
       <header className="flex h-14 shrink-0 items-center justify-between px-4">
         <div className="flex min-w-0 items-center gap-3">
           <Logo className="h-7 w-7" />
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold leading-tight">{room.topic}</p>
-            <p className="text-[11px] leading-tight text-white/50">
+            <p className="text-[10px] font-bold uppercase leading-tight tracking-[0.14em] text-tertiary-fixed/90">
+              Current topic
+            </p>
+            <p key={topic} className="animate-fade-up truncate text-sm font-bold leading-tight">
+              {topic}
+            </p>
+            <p className="truncate text-[11px] leading-tight text-white/50">
+              {topic !== room.topic && <>Started on “{room.topic}” · </>}
               {room.participantIds.length}/{room.maxParticipants} · {room.status}
             </p>
           </div>
@@ -104,7 +121,7 @@ export function RoomExperience({ roomId }: { roomId: string }) {
         </div>
       </header>
 
-      {/* Stage — participant windows split by the AI host in the middle */}
+      {/* Stage — participant windows (host included) split by the AI hub in the middle */}
       <main className="relative min-h-0 flex-1">
         <ParticipantGrid
           room={room}
@@ -112,13 +129,16 @@ export function RoomExperience({ roomId }: { roomId: string }) {
           selfUid={user?.uid}
           selfName={selfName}
           selfListening={stt.listening}
+          live={live}
+          hostSpeaking={hostVoice.speaking}
+          hostMuted={hostMuted}
           panelOpen={panelOpen}
         />
 
         <AiHub
           live={live}
-          latest={hostMessages[0]}
-          history={hostMessages}
+          latest={rt.latestHostMessage}
+          history={hostHistory}
           onChangeTopic={() =>
             changeTopic.mutate(undefined, { onSuccess: (m) => rt.addHostMessage(m) })
           }
@@ -126,10 +146,10 @@ export function RoomExperience({ roomId }: { roomId: string }) {
           panelOpen={panelOpen}
         />
 
-        <TranscriptPanel
+        <ConversationPanel
           open={panelOpen}
           onClose={() => setPanelOpen(false)}
-          segments={rt.segments}
+          history={rt.history}
           selfUid={user?.uid}
           stt={stt}
           live={live}
@@ -146,6 +166,9 @@ export function RoomExperience({ roomId }: { roomId: string }) {
         connected={rt.connected}
         panelOpen={panelOpen}
         onTogglePanel={() => setPanelOpen((v) => !v)}
+        hostMuted={hostMuted}
+        hostVoiceSupported={hostVoice.supported}
+        onToggleHostMute={() => setHostMuted((v) => !v)}
         onStart={() => start.mutate()}
         starting={start.isPending}
         onEnd={() => end.mutate()}
@@ -176,6 +199,9 @@ function ParticipantGrid({
   selfUid,
   selfName,
   selfListening,
+  live,
+  hostSpeaking,
+  hostMuted,
   panelOpen,
 }: {
   room: { participantIds: string[]; ownerId: string };
@@ -183,6 +209,9 @@ function ParticipantGrid({
   selfUid?: string;
   selfName: string;
   selfListening: boolean;
+  live: boolean;
+  hostSpeaking: boolean;
+  hostMuted: boolean;
   panelOpen: boolean;
 }) {
   const ids = room.participantIds;
@@ -196,9 +225,11 @@ function ParticipantGrid({
       <div
         className={cn(
           "mx-auto grid h-full max-w-5xl auto-rows-fr place-content-center gap-4",
-          gridColsClass(ids.length),
+          gridColsClass(ids.length + 1),
         )}
       >
+        {/* The host is a permanent member: always in the room, always listening. */}
+        <HostTile live={live} speaking={hostSpeaking} muted={hostMuted} />
         {ids.map((uid) => {
           const isSelf = uid === selfUid;
           const name = isSelf ? selfName : (presence[uid] ?? "Guest");
@@ -257,13 +288,36 @@ function ParticipantTile({
   );
 }
 
+function HostTile({ live, speaking, muted }: { live: boolean; speaking: boolean; muted: boolean }) {
+  const status = speaking ? "speaking" : live ? "listening" : "waiting";
+  return (
+    <div
+      className={cn(
+        "relative flex min-h-[8rem] items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-[#1b2b4b] to-[#2f3340] ring-2 transition-all",
+        speaking ? "ring-tertiary-fixed" : "ring-transparent",
+      )}
+      aria-label={`${HOST_NAME}, ${status}`}
+    >
+      <ParticipantAvatar name={HOST_NAME} isAI size={84} speaking={speaking} />
+
+      <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-lg bg-black/45 px-2 py-1 text-xs font-semibold backdrop-blur-sm">
+        <Sparkles className="h-3.5 w-3.5 text-tertiary-fixed" />
+        <span>{HOST_NAME}</span>
+        <span className="text-white/60">· {status}</span>
+        {muted && <VolumeX className="h-3.5 w-3.5 text-white/60" aria-label="Host voice muted" />}
+      </div>
+    </div>
+  );
+}
+
 /* --------------- AI host hub — the circle that splits the room ------------ */
 
 /**
- * The AI facilitator, rendered as a circle in the dead-center of the stage so it
+ * The AI host, rendered as a circle in the dead-centre of the stage so it
  * visually separates the participant windows. It listens to the room over the
- * socket and speaks up here whenever it changes the topic — each new line animates in
- * (keyed by id) like the host speaking up.
+ * socket and speaks up here whenever it changes the topic — each new line
+ * animates in (keyed by id) like the host talking. It is an announcement, not a
+ * suggestion: there is nothing to accept or reject.
  */
 function AiHub({
   live,
@@ -281,7 +335,7 @@ function AiHub({
   panelOpen: boolean;
 }) {
   const [showHistory, setShowHistory] = useState(false);
-  const earlier = history.slice(1);
+  const earlier = history.filter((m) => m.id !== latest?.id);
 
   return (
     <div
@@ -305,10 +359,10 @@ function AiHub({
         </div>
 
         <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-tertiary-fixed/90">
-          AI host
+          {HOST_NAME}
         </span>
 
-        {/* Proactive suggestion — arrives via socket; re-animates on each new topic. */}
+        {/* What the host just said — verbatim; re-animates on each new line. */}
         {latest ? (
           <div
             key={latest.id}
@@ -326,13 +380,19 @@ function AiHub({
               <span className="text-[11px] text-on-surface-variant">{clock(latest.at)}</span>
             </div>
             <p className="mt-1.5 font-display text-lg font-extrabold leading-snug text-primary">
-              “{latest.topic}”
+              “{latest.message}”
             </p>
-            <p className="mt-1 text-sm leading-relaxed text-on-surface-variant">{latest.reason}</p>
+            <p className="mt-1.5 text-xs text-on-surface-variant">
+              <span className="font-bold uppercase tracking-wide">Now talking about</span>{" "}
+              <span className="font-semibold text-on-surface">{latest.topic}</span>
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-on-surface-variant/80" title={latest.reason}>
+              {latest.reason}
+            </p>
           </div>
         ) : (
           <p className="rounded-pill bg-black/30 px-3.5 py-1.5 text-xs font-medium text-white/70 backdrop-blur-sm">
-            {live ? "Listening to the conversation…" : "Waiting for the host to start"}
+            {live ? "Listening to the conversation…" : "Waiting for the room to start"}
           </p>
         )}
 
@@ -341,12 +401,13 @@ function AiHub({
             <button
               onClick={onChangeTopic}
               disabled={changing}
+              title="Ask the host to move the group on to a new topic now"
               className="inline-flex items-center gap-1.5 rounded-pill bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-white/20 disabled:opacity-60"
             >
               {changing ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Lightbulb className="h-3.5 w-3.5" />
+                <Shuffle className="h-3.5 w-3.5" />
               )}
               Change topic
             </button>
@@ -363,12 +424,12 @@ function AiHub({
 
         {showHistory && earlier.length > 0 && (
           <div className="max-h-40 w-full space-y-1.5 overflow-y-auto rounded-2xl bg-black/40 p-2 backdrop-blur-sm">
-            {earlier.map((s) => (
-              <div key={s.id} className="rounded-xl bg-white/5 px-3 py-2 text-left">
+            {earlier.map((m) => (
+              <div key={m.id} className="rounded-xl bg-white/5 px-3 py-2 text-left" title={m.reason}>
                 <p className="text-[10px] uppercase tracking-wide text-white/40">
-                  {TRIGGER[s.trigger].label} · {clock(s.at)}
+                  {TRIGGER[m.trigger].label} · {clock(m.at)}
                 </p>
-                <p className="text-sm font-semibold text-white/90">“{s.topic}”</p>
+                <p className="text-sm font-semibold text-white/90">“{m.message}”</p>
               </div>
             ))}
           </div>
@@ -430,6 +491,9 @@ function ControlBar({
   connected,
   panelOpen,
   onTogglePanel,
+  hostMuted,
+  hostVoiceSupported,
+  onToggleHostMute,
   onStart,
   starting,
   onEnd,
@@ -441,6 +505,9 @@ function ControlBar({
   connected: boolean;
   panelOpen: boolean;
   onTogglePanel: () => void;
+  hostMuted: boolean;
+  hostVoiceSupported: boolean;
+  onToggleHostMute: () => void;
   onStart: () => void;
   starting: boolean;
   onEnd: () => void;
@@ -470,13 +537,33 @@ function ControlBar({
           </CtrlButton>
         )}
 
+        {/* Host voice — the host speaks its topic changes aloud; mute to read them only */}
+        <CtrlButton
+          title={
+            !hostVoiceSupported
+              ? "Host voice isn't available in this browser"
+              : hostMuted
+                ? "Unmute the AI host"
+                : "Mute the AI host"
+          }
+          active={hostVoiceSupported && !hostMuted}
+          disabled={!hostVoiceSupported}
+          onClick={onToggleHostMute}
+        >
+          {hostMuted || !hostVoiceSupported ? (
+            <VolumeX className="h-5 w-5" />
+          ) : (
+            <Volume2 className="h-5 w-5" />
+          )}
+        </CtrlButton>
+
         {/* Camera — placeholder for the future video call */}
         <CtrlButton title="Camera (coming soon)" disabled>
           <VideoOff className="h-5 w-5" />
         </CtrlButton>
 
-        {/* Transcript / captions */}
-        <CtrlButton title="Transcript" active={panelOpen} onClick={onTogglePanel}>
+        {/* Conversation / captions */}
+        <CtrlButton title="Conversation" active={panelOpen} onClick={onTogglePanel}>
           <Captions className="h-5 w-5" />
         </CtrlButton>
 
@@ -520,12 +607,12 @@ function ControlBar({
   );
 }
 
-/* ---------------------- Transcript side panel ---------------------------- */
+/* ---------------------- Conversation side panel -------------------------- */
 
-function TranscriptPanel({
+function ConversationPanel({
   open,
   onClose,
-  segments,
+  history,
   selfUid,
   stt,
   live,
@@ -534,7 +621,7 @@ function TranscriptPanel({
 }: {
   open: boolean;
   onClose: () => void;
-  segments: import("@/lib/types").TranscriptSegment[];
+  history: HistoryItem[];
   selfUid?: string;
   stt: ReturnType<typeof useSpeechRecognition>;
   live: boolean;
@@ -545,7 +632,7 @@ function TranscriptPanel({
   const [draft, setDraft] = useState("");
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
-  }, [segments.length, open]);
+  }, [history.length, open]);
 
   if (!open) return null;
 
@@ -553,41 +640,31 @@ function TranscriptPanel({
     <aside className="absolute inset-y-0 right-0 z-10 flex w-full max-w-sm flex-col border-l border-outline-variant bg-white text-on-surface shadow-2xl lg:w-[22rem]">
       <div className="flex items-center justify-between border-b border-outline-variant px-4 py-3">
         <span className="flex items-center gap-2 text-sm font-bold">
-          <Captions className="h-4 w-4 text-primary" /> Live transcript
+          <Captions className="h-4 w-4 text-primary" /> Conversation
         </span>
         <button
           onClick={onClose}
-          aria-label="Close transcript"
+          aria-label="Close conversation"
           className="grid h-8 w-8 place-items-center rounded-lg text-on-surface-variant hover:bg-surface-container"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
 
-      <div ref={scroller} className="exam-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-        {segments.length === 0 && (
+      <div ref={scroller} className="thin-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+        {history.length === 0 && (
           <p className="mt-6 text-center text-sm text-on-surface-variant">
-            Nothing said yet. When people talk, their words appear here — that&apos;s what the AI host
-            listens to.
+            Nothing said yet. When people talk, their words appear here — the AI host listens to
+            this and steps in with a new topic when it&apos;s time.
           </p>
         )}
-        {segments.map((s) => {
-          const mine = s.speakerId === selfUid;
-          return (
-            <div key={s.id} className="flex gap-2.5">
-              <ParticipantAvatar name={s.speakerName ?? "Guest"} size={28} />
-              <div className="min-w-0">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-sm font-bold text-on-surface">
-                    {mine ? "You" : (s.speakerName ?? "Guest")}
-                  </span>
-                  <span className="text-[11px] text-on-surface-variant">{clock(s.at)}</span>
-                </div>
-                <p className="mt-0.5 text-sm leading-relaxed text-on-surface-variant">{s.text}</p>
-              </div>
-            </div>
-          );
-        })}
+        {history.map((h) =>
+          h.kind === "host" ? (
+            <HostLine key={h.id} message={h.message} />
+          ) : (
+            <TranscriptLine key={h.id} segment={h.segment} mine={h.segment.speakerId === selfUid} />
+          ),
+        )}
       </div>
 
       {/* Typed fallback for browsers without the Web Speech API (e.g. Firefox). */}
@@ -625,6 +702,45 @@ function TranscriptPanel({
         </form>
       )}
     </aside>
+  );
+}
+
+function TranscriptLine({ segment, mine }: { segment: TranscriptSegment; mine: boolean }) {
+  return (
+    <div className="flex gap-2.5">
+      <ParticipantAvatar name={segment.speakerName ?? "Guest"} size={28} />
+      <div className="min-w-0">
+        <div className="flex items-baseline gap-2">
+          <span className="text-sm font-bold text-on-surface">
+            {mine ? "You" : (segment.speakerName ?? "Guest")}
+          </span>
+          <span className="text-[11px] text-on-surface-variant">{clock(segment.at)}</span>
+        </div>
+        <p className="mt-0.5 text-sm leading-relaxed text-on-surface-variant">{segment.text}</p>
+      </div>
+    </div>
+  );
+}
+
+/** A line the host spoke — set apart from human lines; `reason` only in the tooltip. */
+function HostLine({ message }: { message: HostMessage }) {
+  return (
+    <div
+      className="flex gap-2.5 rounded-xl border-l-2 border-primary bg-primary-fixed/30 px-3 py-2.5"
+      title={message.reason}
+    >
+      <ParticipantAvatar name={HOST_NAME} isAI size={28} />
+      <div className="min-w-0">
+        <div className="flex items-baseline gap-2">
+          <span className="text-sm font-bold text-primary">{HOST_NAME}</span>
+          <span className="text-[11px] text-on-surface-variant">{clock(message.at)}</span>
+        </div>
+        <p className="mt-0.5 text-sm font-semibold leading-relaxed text-on-surface">{message.message}</p>
+        <p className="mt-1 text-[11px] text-on-surface-variant">
+          {TRIGGER[message.trigger].label} · new topic: <span className="font-semibold">{message.topic}</span>
+        </p>
+      </div>
+    </div>
   );
 }
 
