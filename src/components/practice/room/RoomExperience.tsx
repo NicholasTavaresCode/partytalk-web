@@ -10,7 +10,6 @@ import {
   Send,
   PhoneOff,
   Play,
-  Radio,
   Crown,
   Lightbulb,
   CheckCircle2,
@@ -29,9 +28,9 @@ import { Logo } from "@/components/brand/Logo";
 import { ParticipantAvatar } from "@/components/practice/ParticipantAvatar";
 import { LoadingScreen } from "@/components/app/LoadingScreen";
 import { cn } from "@/lib/cn";
-import type { RoomReport, SuggestionTrigger, TopicSuggestion } from "@/lib/types";
+import type { HostMessage, HostMessageTrigger, RoomReport } from "@/lib/types";
 
-const TRIGGER: Record<SuggestionTrigger, { label: string; cls: string }> = {
+const TRIGGER: Record<HostMessageTrigger, { label: string; cls: string }> = {
   volume: { label: "After lots of talk", cls: "bg-primary-fixed text-on-primary-fixed" },
   silence: { label: "After a pause", cls: "bg-tertiary-fixed text-on-tertiary-fixed" },
   manual: { label: "On request", cls: "bg-secondary/15 text-secondary" },
@@ -44,10 +43,9 @@ export function RoomExperience({ roomId }: { roomId: string }) {
   const { user } = useAuth();
   const { data: me } = useMe();
   const { data: room, isLoading } = useRoom(roomId);
-  const { join, start, end, suggest } = useRoomLifecycle(roomId);
+  const { join, start, end, changeTopic } = useRoomLifecycle(roomId);
   const rt = useRoomSocket(roomId);
 
-  const [extra, setExtra] = useState<TopicSuggestion[]>([]);
   const [panelOpen, setPanelOpen] = useState(false);
   const stt = useSpeechRecognition(rt.sendTranscript);
   const voice = useVoiceMesh({ socket: rt.socket, roomId, enabled: room?.status === "live" });
@@ -62,11 +60,11 @@ export function RoomExperience({ roomId }: { roomId: string }) {
     }
   }, [room, user, join]);
 
-  const suggestions = useMemo(() => {
-    const byId = new Map<string, TopicSuggestion>();
-    [...rt.suggestions, ...extra].forEach((s) => byId.set(s.id, s));
-    return [...byId.values()].sort((a, b) => b.at.localeCompare(a.at));
-  }, [rt.suggestions, extra]);
+  // Newest first for the hub; `rt.hostMessages` is already deduped by id.
+  const hostMessages = useMemo(
+    () => [...rt.hostMessages].sort((a, b) => b.at.localeCompare(a.at)),
+    [rt.hostMessages],
+  );
 
   if (isLoading || !room) return <LoadingScreen label="Joining room…" />;
 
@@ -87,7 +85,9 @@ export function RoomExperience({ roomId }: { roomId: string }) {
           <Logo className="h-7 w-7" />
           <div className="min-w-0">
             <p className="truncate text-sm font-bold leading-tight">{room.topic}</p>
-            <p className="text-[11px] leading-tight text-white/50">{room.facilitatorPersona}</p>
+            <p className="text-[11px] leading-tight text-white/50">
+              {room.participantIds.length}/{room.maxParticipants} · {room.status}
+            </p>
           </div>
         </div>
 
@@ -101,32 +101,28 @@ export function RoomExperience({ roomId }: { roomId: string }) {
               Waiting to start
             </span>
           )}
-          <VoiceIndicator voice={voice} live={live} />
         </div>
       </header>
 
-      {/* Stage — participant tiles with the AI host pinned in the center */}
+      {/* Stage — participant windows split by the AI host in the middle */}
       <main className="relative min-h-0 flex-1">
         <ParticipantGrid
           room={room}
           presence={rt.presence}
           selfUid={user?.uid}
           selfName={selfName}
-          selfSpeaking={stt.listening}
-          selfMuted={voice.muted}
+          selfListening={stt.listening}
           panelOpen={panelOpen}
         />
 
-        <CenterSuggestion
-          seedTopic={room.topic}
-          persona={room.facilitatorPersona}
+        <AiHub
           live={live}
-          latest={suggestions[0]}
-          history={suggestions}
-          onSuggest={() =>
-            suggest.mutate(undefined, { onSuccess: (s) => setExtra((p) => [...p, s]) })
+          latest={hostMessages[0]}
+          history={hostMessages}
+          onChangeTopic={() =>
+            changeTopic.mutate(undefined, { onSuccess: (m) => rt.addHostMessage(m) })
           }
-          suggesting={suggest.isPending}
+          changing={changeTopic.isPending}
           panelOpen={panelOpen}
         />
 
@@ -147,7 +143,6 @@ export function RoomExperience({ roomId }: { roomId: string }) {
         live={live}
         isOwner={isOwner}
         stt={stt}
-        voice={voice}
         connected={rt.connected}
         panelOpen={panelOpen}
         onTogglePanel={() => setPanelOpen((v) => !v)}
@@ -180,16 +175,14 @@ function ParticipantGrid({
   presence,
   selfUid,
   selfName,
-  selfSpeaking,
-  selfMuted,
+  selfListening,
   panelOpen,
 }: {
   room: { participantIds: string[]; ownerId: string };
   presence: Record<string, string | undefined>;
   selfUid?: string;
   selfName: string;
-  selfSpeaking: boolean;
-  selfMuted: boolean;
+  selfListening: boolean;
   panelOpen: boolean;
 }) {
   const ids = room.participantIds;
@@ -202,7 +195,7 @@ function ParticipantGrid({
     >
       <div
         className={cn(
-          "mx-auto grid h-full max-w-5xl auto-rows-fr place-content-center gap-3",
+          "mx-auto grid h-full max-w-5xl auto-rows-fr place-content-center gap-4",
           gridColsClass(ids.length),
         )}
       >
@@ -215,8 +208,8 @@ function ParticipantGrid({
               key={uid}
               name={isSelf ? `${name} (you)` : name}
               online={online}
-              speaking={isSelf && selfSpeaking}
-              muted={isSelf ? selfMuted : undefined}
+              speaking={isSelf && selfListening}
+              micOn={isSelf ? selfListening : undefined}
               owner={uid === room.ownerId}
             />
           );
@@ -230,13 +223,13 @@ function ParticipantTile({
   name,
   online,
   speaking,
-  muted,
+  micOn,
   owner,
 }: {
   name: string;
   online: boolean;
   speaking: boolean;
-  muted?: boolean;
+  micOn?: boolean;
   owner: boolean;
 }) {
   return (
@@ -251,11 +244,11 @@ function ParticipantTile({
       <ParticipantAvatar name={name} size={84} speaking={speaking} />
 
       <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-lg bg-black/45 px-2 py-1 text-xs font-semibold backdrop-blur-sm">
-        {muted !== undefined &&
-          (muted ? (
-            <MicOff className="h-3.5 w-3.5 text-secondary-fixed-dim" />
+        {micOn !== undefined &&
+          (micOn ? (
+            <Mic className="h-3.5 w-3.5 text-emerald-400" />
           ) : (
-            <Mic className="h-3.5 w-3.5 text-white/80" />
+            <MicOff className="h-3.5 w-3.5 text-white/60" />
           ))}
         <span className="max-w-[10rem] truncate">{name}</span>
         {owner && <Crown className="h-3.5 w-3.5 text-tertiary-fixed-dim" />}
@@ -264,25 +257,27 @@ function ParticipantTile({
   );
 }
 
-/* ----------------------- Center AI host suggestion ----------------------- */
+/* --------------- AI host hub — the circle that splits the room ------------ */
 
-function CenterSuggestion({
-  seedTopic,
-  persona,
+/**
+ * The AI facilitator, rendered as a circle in the dead-center of the stage so it
+ * visually separates the participant windows. It listens to the room over the
+ * socket and speaks up here whenever it changes the topic — each new line animates in
+ * (keyed by id) like the host speaking up.
+ */
+function AiHub({
   live,
   latest,
   history,
-  onSuggest,
-  suggesting,
+  onChangeTopic,
+  changing,
   panelOpen,
 }: {
-  seedTopic: string;
-  persona: string;
   live: boolean;
-  latest?: TopicSuggestion;
-  history: TopicSuggestion[];
-  onSuggest: () => void;
-  suggesting: boolean;
+  latest?: HostMessage;
+  history: HostMessage[];
+  onChangeTopic: () => void;
+  changing: boolean;
   panelOpen: boolean;
 }) {
   const [showHistory, setShowHistory] = useState(false);
@@ -295,112 +290,91 @@ function CenterSuggestion({
         panelOpen && "lg:pr-[22rem]",
       )}
     >
-      <div className="pointer-events-auto w-full max-w-lg rounded-3xl border border-white/10 bg-gradient-to-br from-primary-container to-primary p-6 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.7)] ring-1 ring-tertiary-fixed/20">
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-tertiary-fixed">
-            <Sparkles className="h-4 w-4" /> AI host
-          </span>
-          {latest && (
-            <span
-              className={cn(
-                "rounded-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
-                TRIGGER[latest.trigger].cls,
-              )}
-            >
-              {TRIGGER[latest.trigger].label}
-            </span>
+      <div className="pointer-events-auto flex w-full max-w-sm flex-col items-center gap-3">
+        {/* The circle — a ring in the stage colour makes it read as a divider. */}
+        <div className="relative grid place-items-center">
+          {live && (
+            <>
+              <span className="absolute h-24 w-24 animate-ping rounded-full bg-tertiary-fixed/20 [animation-duration:2.4s]" />
+              <span className="absolute h-24 w-24 animate-ping rounded-full bg-primary-fixed/20 [animation-duration:3.2s]" />
+            </>
           )}
+          <div className="relative grid h-24 w-24 place-items-center rounded-full bg-gradient-to-br from-primary-container to-primary text-tertiary-fixed shadow-[0_12px_40px_-8px_rgba(0,0,0,0.7)] ring-8 ring-[#202124]">
+            <Sparkles className="h-9 w-9" />
+          </div>
         </div>
 
+        <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-tertiary-fixed/90">
+          AI host
+        </span>
+
+        {/* Proactive suggestion — arrives via socket; re-animates on each new topic. */}
         {latest ? (
-          <>
-            <p className="mt-3 font-display text-2xl font-extrabold leading-snug">“{latest.topic}”</p>
-            <p className="mt-2 text-sm leading-relaxed text-white/80">{latest.rationale}</p>
-            <p className="mt-1 text-[11px] text-white/50">Suggested at {clock(latest.at)}</p>
-          </>
-        ) : (
-          <>
-            <p className="mt-3 font-display text-2xl font-extrabold leading-snug">“{seedTopic}”</p>
-            <p className="mt-2 text-sm leading-relaxed text-white/75">
-              {live
-                ? "Talk it through — I'll drop a fresh angle into the middle here as the conversation flows."
-                : "Your opening topic. New suggestions appear right here once the host starts the session."}
+          <div
+            key={latest.id}
+            className="animate-fade-up w-full rounded-2xl bg-white px-4 py-3 text-center text-on-surface shadow-[0_22px_55px_-18px_rgba(0,0,0,0.7)]"
+          >
+            <div className="flex items-center justify-center gap-2">
+              <span
+                className={cn(
+                  "rounded-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+                  TRIGGER[latest.trigger].cls,
+                )}
+              >
+                {TRIGGER[latest.trigger].label}
+              </span>
+              <span className="text-[11px] text-on-surface-variant">{clock(latest.at)}</span>
+            </div>
+            <p className="mt-1.5 font-display text-lg font-extrabold leading-snug text-primary">
+              “{latest.topic}”
             </p>
-          </>
+            <p className="mt-1 text-sm leading-relaxed text-on-surface-variant">{latest.reason}</p>
+          </div>
+        ) : (
+          <p className="rounded-pill bg-black/30 px-3.5 py-1.5 text-xs font-medium text-white/70 backdrop-blur-sm">
+            {live ? "Listening to the conversation…" : "Waiting for the host to start"}
+          </p>
         )}
 
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/10 pt-4">
-          {live && (
+        {live && (
+          <div className="flex items-center gap-2">
             <button
-              onClick={onSuggest}
-              disabled={suggesting}
-              className="inline-flex items-center gap-2 rounded-pill bg-white/15 px-4 py-2 text-sm font-semibold transition-colors hover:bg-white/25 disabled:opacity-60"
+              onClick={onChangeTopic}
+              disabled={changing}
+              className="inline-flex items-center gap-1.5 rounded-pill bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-white/20 disabled:opacity-60"
             >
-              {suggesting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+              {changing ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Lightbulb className="h-4 w-4" />
+                <Lightbulb className="h-3.5 w-3.5" />
               )}
-              Suggest a topic
+              Change topic
             </button>
-          )}
-          {earlier.length > 0 && (
-            <button
-              onClick={() => setShowHistory((v) => !v)}
-              className="inline-flex items-center gap-1.5 rounded-pill px-3 py-2 text-sm font-medium text-white/70 transition-colors hover:bg-white/10"
-            >
-              {showHistory ? "Hide" : "Earlier topics"} ({earlier.length})
-            </button>
-          )}
-        </div>
+            {earlier.length > 0 && (
+              <button
+                onClick={() => setShowHistory((v) => !v)}
+                className="rounded-pill px-3 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10"
+              >
+                {showHistory ? "Hide" : `Earlier (${earlier.length})`}
+              </button>
+            )}
+          </div>
+        )}
 
         {showHistory && earlier.length > 0 && (
-          <div className="mt-3 max-h-40 space-y-2 overflow-y-auto pr-1">
+          <div className="max-h-40 w-full space-y-1.5 overflow-y-auto rounded-2xl bg-black/40 p-2 backdrop-blur-sm">
             {earlier.map((s) => (
-              <div key={s.id} className="rounded-xl bg-black/20 p-3">
-                <div className="flex items-center gap-2 text-[10px] text-white/50">
-                  <span className="font-bold uppercase tracking-wide">
-                    {TRIGGER[s.trigger].label}
-                  </span>
-                  · {clock(s.at)}
-                </div>
-                <p className="mt-1 text-sm font-semibold">“{s.topic}”</p>
+              <div key={s.id} className="rounded-xl bg-white/5 px-3 py-2 text-left">
+                <p className="text-[10px] uppercase tracking-wide text-white/40">
+                  {TRIGGER[s.trigger].label} · {clock(s.at)}
+                </p>
+                <p className="text-sm font-semibold text-white/90">“{s.topic}”</p>
               </div>
             ))}
           </div>
         )}
-
-        <p className="mt-4 text-[11px] italic text-white/40">{persona}</p>
       </div>
     </div>
-  );
-}
-
-/* --------------------------------- Voice --------------------------------- */
-
-function VoiceIndicator({
-  voice,
-  live,
-}: {
-  voice: ReturnType<typeof useVoiceMesh>;
-  live: boolean;
-}) {
-  if (!live) return null;
-  const label =
-    voice.status === "connected"
-      ? `Voice · ${voice.peerCount} peer${voice.peerCount === 1 ? "" : "s"}`
-      : voice.status === "requesting-mic"
-        ? "Requesting mic…"
-        : voice.status === "mic-denied"
-          ? "Mic blocked"
-          : "Voice ready";
-  return (
-    <span className="hidden items-center gap-1.5 rounded-pill bg-white/10 px-2.5 py-1 text-xs font-medium text-white/70 sm:inline-flex">
-      <Radio
-        className={cn("h-3.5 w-3.5", voice.status === "connected" ? "text-emerald-400" : "text-white/60")}
-      />
-      {label}
-    </span>
   );
 }
 
@@ -453,7 +427,6 @@ function ControlBar({
   live,
   isOwner,
   stt,
-  voice,
   connected,
   panelOpen,
   onTogglePanel,
@@ -465,7 +438,6 @@ function ControlBar({
   live: boolean;
   isOwner: boolean;
   stt: ReturnType<typeof useSpeechRecognition>;
-  voice: ReturnType<typeof useVoiceMesh>;
   connected: boolean;
   panelOpen: boolean;
   onTogglePanel: () => void;
@@ -474,19 +446,10 @@ function ControlBar({
   onEnd: () => void;
   ending: boolean;
 }) {
-  const micReady = voice.status === "ready" || voice.status === "connected";
   return (
-    <footer className="flex h-20 shrink-0 items-center justify-between gap-2 px-4">
-      {/* Left — captions / transcript toggle */}
-      <div className="flex w-40 items-center">
-        <CtrlButton title="Transcript" active={panelOpen} onClick={onTogglePanel}>
-          <Captions className="h-5 w-5" />
-        </CtrlButton>
-      </div>
-
-      {/* Center — call controls */}
+    <footer className="relative flex h-20 shrink-0 items-center justify-center px-4">
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Talk to the AI (browser speech-to-text) */}
+        {/* Mic — talk so the AI hears you (browser speech-to-text) */}
         {stt.supported ? (
           <CtrlButton
             title={stt.listening ? "Pause talking" : "Talk — let the AI hear you"}
@@ -494,11 +457,7 @@ function ControlBar({
             disabled={!live || !connected}
             onClick={() => (stt.listening ? stt.stop() : stt.start())}
           >
-            {stt.listening ? (
-              <Mic className="h-5 w-5 animate-pulse" />
-            ) : (
-              <MicOff className="h-5 w-5" />
-            )}
+            {stt.listening ? <Mic className="h-5 w-5 animate-pulse" /> : <MicOff className="h-5 w-5" />}
           </CtrlButton>
         ) : (
           <CtrlButton
@@ -511,19 +470,14 @@ function ControlBar({
           </CtrlButton>
         )}
 
-        {/* Voice mute (P2P mesh) — active once a mic is acquired */}
-        <CtrlButton
-          title={voice.muted ? "Unmute voice" : "Mute voice"}
-          disabled={!micReady}
-          active={micReady && !voice.muted}
-          onClick={voice.toggleMute}
-        >
-          {voice.muted ? <MicOff className="h-5 w-5" /> : <Radio className="h-5 w-5" />}
-        </CtrlButton>
-
         {/* Camera — placeholder for the future video call */}
         <CtrlButton title="Camera (coming soon)" disabled>
           <VideoOff className="h-5 w-5" />
+        </CtrlButton>
+
+        {/* Transcript / captions */}
+        <CtrlButton title="Transcript" active={panelOpen} onClick={onTogglePanel}>
+          <Captions className="h-5 w-5" />
         </CtrlButton>
 
         {isOwner && !live && (
@@ -556,15 +510,12 @@ function ControlBar({
         </Link>
       </div>
 
-      {/* Right — reserved to keep the center group centered */}
-      <div className="hidden w-40 justify-end sm:flex">
-        <Link
-          href="/practice"
-          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-white/60 hover:text-white"
-        >
-          <ArrowLeft className="h-4 w-4" /> Rooms
-        </Link>
-      </div>
+      <Link
+        href="/practice"
+        className="absolute right-4 hidden items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-white/60 hover:text-white sm:inline-flex"
+      >
+        <ArrowLeft className="h-4 w-4" /> Rooms
+      </Link>
     </footer>
   );
 }

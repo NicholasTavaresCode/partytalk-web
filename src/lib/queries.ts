@@ -12,7 +12,7 @@ export const queryKeys = {
   rooms: ["rooms"] as const,
   room: (id: string) => ["rooms", id] as const,
   transcript: (id: string) => ["rooms", id, "transcript"] as const,
-  suggestions: (id: string) => ["rooms", id, "suggestions"] as const,
+  hostMessages: (id: string) => ["rooms", id, "host-messages"] as const,
 };
 
 /* --------------------------------- Users -------------------------------- */
@@ -80,6 +80,6 @@ export function useRoomLifecycle(id: string) {
     leave: useMutation({ mutationFn: () => roomsApi.leave(id), onSuccess: invalidate }),
     start: useMutation({ mutationFn: () => roomsApi.start(id), onSuccess: invalidate }),
     end: useMutation({ mutationFn: () => roomsApi.end(id), onSuccess: invalidate }),
-    suggest: useMutation({ mutationFn: () => roomsApi.suggestTopic(id) }),
+    changeTopic: useMutation({ mutationFn: () => roomsApi.changeTopic(id) }),
   };
 }

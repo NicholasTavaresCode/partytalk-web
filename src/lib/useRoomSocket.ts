@@ -1,51 +1,53 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { connectRoomsSocket, type RoomsSocket } from "./socket";
 import { roomsApi } from "./api/rooms";
-import type { RoomReport, TopicSuggestion, TranscriptSegment } from "./types";
+import {
+  initialRoomState,
+  latestHostMessage,
+  mergeHistory,
+  roomReducer,
+  type HistoryItem,
+  type RoomState,
+} from "./roomHistory";
+import type { HostMessage } from "./types";
 
-function upsertById<T extends { id: string }>(list: T[], item: T): T[] {
-  if (list.some((x) => x.id === item.id)) return list;
-  return [...list, item];
-}
-
-export interface RoomSocketState {
+export interface RoomSocketState extends RoomState {
   socket: RoomsSocket | null;
-  connected: boolean;
-  segments: TranscriptSegment[];
-  suggestions: TopicSuggestion[];
-  /** uid → display name (name known only for peers seen joining this session). */
-  presence: Record<string, string | undefined>;
-  endedReport: RoomReport | null | undefined; // undefined = not ended; null = ended without report
-  ended: boolean;
-  error: string | null;
+  /** Transcript and host lines interleaved by time, oldest first. */
+  history: HistoryItem[];
+  /** The most recent thing the host said, if anything. */
+  latestHostMessage: HostMessage | undefined;
+  /** Add a host message received out-of-band (e.g. the change-topic response). Deduped by id. */
+  addHostMessage: (message: HostMessage) => void;
   sendTranscript: (text: string) => void;
 }
 
 /**
- * Owns the realtime connection for one room: joins the `rooms` namespace, seeds
- * history from REST, then streams `transcript` / `topicSuggested` / `presence` /
- * `sessionEnded` events.
+ * Owns the realtime connection for one room: seeds history from REST
+ * (`transcript` + `host-messages`), joins the `rooms` namespace, then streams
+ * `transcript` / `hostMessage` / `presence` / `sessionEnded` events through
+ * `roomReducer`.
  */
 export function useRoomSocket(roomId: string): RoomSocketState {
   const socketRef = useRef<RoomsSocket | null>(null);
   const [socket, setSocket] = useState<RoomsSocket | null>(null);
-  const [connected, setConnected] = useState(false);
-  const [segments, setSegments] = useState<TranscriptSegment[]>([]);
-  const [suggestions, setSuggestions] = useState<TopicSuggestion[]>([]);
-  const [presence, setPresence] = useState<Record<string, string | undefined>>({});
-  const [endedReport, setEndedReport] = useState<RoomReport | null | undefined>(undefined);
-  const [ended, setEnded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [state, dispatch] = useReducer(roomReducer, initialRoomState);
 
   useEffect(() => {
     let active = true;
     let s: RoomsSocket | undefined;
 
-    // Seed history so late joiners see the conversation so far.
-    void roomsApi.getTranscript(roomId, 100).then((t) => active && setSegments(t)).catch(() => { });
-    void roomsApi.getSuggestions(roomId, 50).then((s2) => active && setSuggestions(s2)).catch(() => { });
+    // Seed history so late joiners see the conversation so far, host lines included.
+    void roomsApi
+      .getTranscript(roomId, 100)
+      .then((segments) => active && dispatch({ type: "seedTranscript", segments }))
+      .catch(() => {});
+    void roomsApi
+      .getHostMessages(roomId, 100)
+      .then((hostMessages) => active && dispatch({ type: "seedHostMessages", hostMessages }))
+      .catch(() => {});
 
     connectRoomsSocket()
       .then((sock) => {
@@ -58,29 +60,19 @@ export function useRoomSocket(roomId: string): RoomSocketState {
         setSocket(sock);
 
         sock.on("connect", () => {
-          setConnected(true);
+          dispatch({ type: "connected", connected: true });
           sock.emit("joinRoom", { roomId });
         });
-        sock.on("disconnect", () => setConnected(false));
-        sock.on("transcript", (seg) => setSegments((p) => upsertById(p, seg)));
-        sock.on("topicSuggested", (sug) => setSuggestions((p) => upsertById(p, sug)));
-        sock.on("presence", (ev) =>
-          setPresence((prev) => {
-            if (ev.event === "left") {
-              const next = { ...prev };
-              delete next[ev.uid];
-              return next;
-            }
-            return { ...prev, [ev.uid]: ev.name ?? prev[ev.uid] };
-          }),
-        );
-        sock.on("sessionEnded", (e) => {
-          setEnded(true);
-          setEndedReport(e.report ?? null);
-        });
-        sock.on("error", (e) => setError(e.message));
+        sock.on("disconnect", () => dispatch({ type: "connected", connected: false }));
+        sock.on("transcript", (segment) => dispatch({ type: "transcript", segment }));
+        sock.on("hostMessage", (message) => dispatch({ type: "hostMessage", message }));
+        sock.on("presence", (event) => dispatch({ type: "presence", event }));
+        sock.on("sessionEnded", (event) => dispatch({ type: "sessionEnded", event }));
+        sock.on("error", (e) => dispatch({ type: "error", message: e.message }));
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Could not connect"));
+      .catch((e) =>
+        dispatch({ type: "error", message: e instanceof Error ? e.message : "Could not connect" }),
+      );
 
     return () => {
       active = false;
@@ -106,15 +98,23 @@ export function useRoomSocket(roomId: string): RoomSocketState {
     [roomId],
   );
 
+  const addHostMessage = useCallback(
+    (message: HostMessage) => dispatch({ type: "hostMessage", message }),
+    [],
+  );
+
+  const history = useMemo(
+    () => mergeHistory(state.segments, state.hostMessages),
+    [state.segments, state.hostMessages],
+  );
+  const latest = useMemo(() => latestHostMessage(state.hostMessages), [state.hostMessages]);
+
   return {
+    ...state,
     socket,
-    connected,
-    segments,
-    suggestions,
-    presence,
-    endedReport,
-    ended,
-    error,
+    history,
+    latestHostMessage: latest,
+    addHostMessage,
     sendTranscript,
   };
 }

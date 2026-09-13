@@ -1,5 +1,5 @@
 import { api } from "@/lib/apiClient";
-import type { CreateRoomInput, Room, TopicSuggestion, TranscriptSegment } from "@/lib/types";
+import type { CreateRoomInput, HostMessage, Room, TranscriptSegment } from "@/lib/types";
 
 const qs = (limit?: number) => (limit ? `?limit=${limit}` : "");
 
@@ -15,7 +15,9 @@ export const roomsApi = {
     api.get<TranscriptSegment[]>(`/rooms/${id}/transcript${qs(limit)}`),
   postTranscript: (id: string, text: string, speakerName?: string) =>
     api.post<TranscriptSegment>(`/rooms/${id}/transcript`, { text, speakerName }),
-  getSuggestions: (id: string, limit?: number) =>
-    api.get<TopicSuggestion[]>(`/rooms/${id}/suggestions${qs(limit)}`),
-  suggestTopic: (id: string) => api.post<TopicSuggestion>(`/rooms/${id}/suggest-topic`),
+  /** Oldest first. Default limit 20, max 100. */
+  getHostMessages: (id: string, limit?: number) =>
+    api.get<HostMessage[]>(`/rooms/${id}/host-messages${qs(limit)}`),
+  /** Asks the host to change topic now; the same message is also broadcast over the socket. */
+  changeTopic: (id: string) => api.post<HostMessage>(`/rooms/${id}/change-topic`),
 };

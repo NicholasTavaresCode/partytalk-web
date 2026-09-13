@@ -26,7 +26,7 @@ export interface UpsertProfile {
 /* ================================= Rooms ================================= */
 
 export type RoomStatus = "waiting" | "live" | "ended";
-export type SuggestionTrigger = "volume" | "silence" | "manual";
+export type HostMessageTrigger = "volume" | "silence" | "manual";
 
 export interface RoomReport {
   summary: string;
@@ -38,6 +38,7 @@ export interface RoomReport {
 
 export interface Room {
   id: string;
+  /** The OPENING topic only. The current topic is the `topic` of the latest `HostMessage`. */
   topic: string;
   facilitatorPersona: string;
   status: RoomStatus;
@@ -65,12 +66,21 @@ export interface TranscriptSegment {
   at: string;
 }
 
-export interface TopicSuggestion {
+/**
+ * A line the AI host spoke to move the group on to a new topic. Arrives over the
+ * socket as `hostMessage` and from `POST /rooms/:id/change-topic`, which returns
+ * the same object it broadcasts — so always dedupe by `id`.
+ */
+export interface HostMessage {
   id: string;
   roomId: string;
+  /** The exact sentence the host says. */
+  message: string;
+  /** The new topic the group is now on. */
   topic: string;
-  rationale: string;
-  trigger: SuggestionTrigger;
+  /** Short note on why the host stepped in now. */
+  reason: string;
+  trigger: HostMessageTrigger;
   at: string;
 }
 
@@ -101,7 +111,7 @@ export interface SocketErrorEvent {
 export interface ServerToClientEvents {
   presence: (e: PresenceEvent) => void;
   transcript: (s: TranscriptSegment) => void;
-  topicSuggested: (s: TopicSuggestion) => void;
+  hostMessage: (m: HostMessage) => void;
   sessionEnded: (e: SessionEndedEvent) => void;
   error: (e: SocketErrorEvent) => void;
   "webrtc:peers": (e: { uids: string[] }) => void;
