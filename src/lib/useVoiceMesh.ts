@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { env } from "./env";
 import type { RoomsSocket } from "./socket";
 
 const ICE_CONFIG: RTCConfiguration = {
@@ -36,6 +37,8 @@ export function useVoiceMesh({ socket, roomId, enabled }: Options) {
   const [status, setStatus] = useState<VoiceStatus>("off");
   const [muted, setMuted] = useState(false);
   const [remoteStreams, setRemoteStreams] = useState<RemoteStream[]>([]);
+  /** The local mic stream once acquired (for level metering / speaking indicators). */
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -100,8 +103,10 @@ export function useVoiceMesh({ socket, roomId, enabled }: Options) {
           return;
         }
         localStreamRef.current = stream;
+        setLocalStream(stream);
         setStatus("ready");
-        socket.emit("webrtc:join", { roomId });
+        // Only announce ourselves when the backend actually relays signaling.
+        if (env.voiceMeshEnabled) socket.emit("webrtc:join", { roomId });
       } catch {
         if (active) {
           setStatus("mic-denied");
@@ -165,6 +170,7 @@ export function useVoiceMesh({ socket, roomId, enabled }: Options) {
       pendingIceRef.current.clear();
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
+      setLocalStream(null);
       setRemoteStreams([]);
       setStatus("off");
     };
@@ -182,6 +188,7 @@ export function useVoiceMesh({ socket, roomId, enabled }: Options) {
     status,
     muted,
     toggleMute,
+    localStream,
     remoteStreams,
     peerCount: remoteStreams.length,
     error,

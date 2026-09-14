@@ -57,13 +57,44 @@ export function currentTopic(hostMessages: HostMessage[], openingTopic: string):
   return latestHostMessage(hostMessages)?.topic ?? openingTopic;
 }
 
+/* ------------------------------- Speaking -------------------------------- */
+
+/** How long a person counts as "talking" after their last transcript line. */
+export const RECENT_SPEECH_MS = 4000;
+
+/**
+ * Speaker ids with a transcript line inside the window — the fallback speaking
+ * signal for peers whose audio we can't meter (no WebRTC stream yet).
+ * Returns the time at which the earliest of them expires, for rescheduling.
+ */
+export function recentSpeakers(
+  segments: { speakerId: string; at: string }[],
+  now: number,
+  windowMs = RECENT_SPEECH_MS,
+): { speakers: Set<string>; nextExpiry: number | null } {
+  const speakers = new Set<string>();
+  let nextExpiry: number | null = null;
+  for (const s of segments) {
+    const expires = timeOf(s.at) + windowMs;
+    if (expires > now && timeOf(s.at) <= now + windowMs) {
+      speakers.add(s.speakerId);
+      nextExpiry = nextExpiry === null ? expires : Math.min(nextExpiry, expires);
+    }
+  }
+  return { speakers, nextExpiry };
+}
+
 /* -------------------------------- Reducer -------------------------------- */
 
 export interface RoomState {
   connected: boolean;
   segments: TranscriptSegment[];
   hostMessages: HostMessage[];
-  /** uid → display name (name known only for peers seen joining this session). */
+  /**
+   * uid → display name for participants whose socket is currently subscribed
+   * (name known only for peers seen joining this session). This is *online*
+   * status only — membership is `Room.participantIds`.
+   */
   presence: Record<string, string | undefined>;
   ended: boolean;
   /** undefined = not ended; null = ended without a report (the AI failed). */
@@ -89,7 +120,7 @@ export type RoomAction =
   | { type: "hostMessage"; message: HostMessage }
   | { type: "presence"; event: PresenceEvent }
   | { type: "sessionEnded"; event: SessionEndedEvent }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string | null };
 
 /** Pure state machine for one room's realtime stream (socket events + REST seeds). */
 export function roomReducer(state: RoomState, action: RoomAction): RoomState {

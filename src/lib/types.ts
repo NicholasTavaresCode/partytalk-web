@@ -26,6 +26,10 @@ export interface UpsertProfile {
 /* ================================= Rooms ================================= */
 
 export type RoomStatus = "waiting" | "live" | "ended";
+
+/** The only session lengths the API accepts (minutes). Default 30. */
+export const ROOM_DURATIONS = [10, 15, 30, 45, 60] as const;
+export type RoomDuration = (typeof ROOM_DURATIONS)[number];
 export type HostMessageTrigger = "volume" | "silence" | "manual";
 
 export interface RoomReport {
@@ -40,22 +44,38 @@ export interface Room {
   id: string;
   /** The OPENING topic only. The current topic is the `topic` of the latest `HostMessage`. */
   topic: string;
-  facilitatorPersona: string;
+  /** True when the AI host chose the opening topic (`hostPicksTopic` at creation). */
+  topicPickedByHost?: boolean;
   status: RoomStatus;
   ownerId: string;
   participantIds: string[];
   maxParticipants: number;
+  /** Session length in minutes (one of ROOM_DURATIONS). */
+  durationMinutes: number;
+  /** Set when the owner starts the room. */
+  startedAt?: string;
+  /** startedAt + durationMinutes. The backend ends the session itself at this time and emits `sessionEnded`. */
+  scheduledEndAt?: string;
   report?: RoomReport;
   createdAt: string;
   updatedAt: string;
   endedAt?: string;
 }
 
-export interface CreateRoomInput {
-  topic: string;
-  facilitatorPersona?: string;
+interface CreateRoomOptions {
   maxParticipants?: number;
+  /** 10 | 15 | 30 | 45 | 60; the API defaults to 30. */
+  durationMinutes?: RoomDuration;
 }
+
+/**
+ * Either the creator types the opening topic, or `hostPicksTopic: true` asks the
+ * AI host to choose one — in which case `topic` must be omitted (the API ignores
+ * it) and the call can fail with 503 if the host can't pick right now.
+ */
+export type CreateRoomInput =
+  | (CreateRoomOptions & { topic: string; hostPicksTopic?: false })
+  | (CreateRoomOptions & { hostPicksTopic: true; topic?: undefined });
 
 export interface TranscriptSegment {
   id: string;
@@ -109,6 +129,14 @@ export interface SocketErrorEvent {
  * when the backend ships signaling.
  */
 export interface ServerToClientEvents {
+  /**
+   * The full Room, sent to everyone already in the socket room whenever someone
+   * joins/leaves over REST or the owner starts it. Replaces local room state
+   * (participants, status, scheduledEndAt). The actor gets the same Room in the
+   * REST response instead, so both sources are applied identically.
+   */
+  roomUpdated: (room: Room) => void;
+  /** A socket subscribed/unsubscribed — NOT membership; the member list is `Room.participantIds`. */
   presence: (e: PresenceEvent) => void;
   transcript: (s: TranscriptSegment) => void;
   hostMessage: (m: HostMessage) => void;

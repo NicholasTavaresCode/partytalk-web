@@ -117,11 +117,22 @@ const config: Config = {
           "0%, 100%": { transform: "translateY(0)" },
           "50%": { transform: "translateY(-10px)" },
         },
+        "voice-bar": {
+          "0%, 100%": { transform: "scaleY(0.3)" },
+          "50%": { transform: "scaleY(1)" },
+        },
+        "topic-highlight": {
+          "0%": { backgroundColor: "rgba(138, 180, 248, 0.55)", boxShadow: "0 0 0 6px rgba(138, 180, 248, 0.35)", transform: "scale(1.02)" },
+          "35%": { backgroundColor: "rgba(138, 180, 248, 0.35)", boxShadow: "0 0 0 2px rgba(138, 180, 248, 0.2)", transform: "scale(1)" },
+          "100%": { backgroundColor: "rgba(138, 180, 248, 0.12)", boxShadow: "0 0 0 0 rgba(138, 180, 248, 0)", transform: "scale(1)" },
+        },
       },
       animation: {
         "pulse-ring": "pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
         "fade-up": "fade-up 0.6s ease both",
         float: "float 6s ease-in-out infinite",
+        "voice-bar": "voice-bar 0.8s ease-in-out infinite",
+        "topic-highlight": "topic-highlight 2.4s ease-out both",
       },
     },
   },

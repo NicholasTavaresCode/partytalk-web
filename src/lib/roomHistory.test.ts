@@ -4,6 +4,7 @@ import {
   initialRoomState,
   latestHostMessage,
   mergeHistory,
+  recentSpeakers,
   roomReducer,
   type RoomState,
 } from "./roomHistory";
@@ -118,5 +119,23 @@ describe("other room events", () => {
     const report = { summary: "s", highlights: [], suggestions: [], topicsExplored: [], generatedAt: "2026-09-13T11:00:00Z" };
     const s = reduce([{ type: "sessionEnded", event: { roomId: "r1", report } }]);
     expect(s.endedReport).toEqual(report);
+  });
+});
+
+describe("recentSpeakers", () => {
+  const NOW = Date.parse("2026-09-13T10:00:10Z");
+  const line = (speakerId: string, secondsAgo: number) => ({
+    speakerId,
+    at: new Date(NOW - secondsAgo * 1000).toISOString(),
+  });
+
+  it("counts people who spoke inside the window and reports the next expiry", () => {
+    const { speakers, nextExpiry } = recentSpeakers([line("u1", 1), line("u2", 3), line("u3", 9)], NOW, 4000);
+    expect([...speakers].sort()).toEqual(["u1", "u2"]);
+    expect(nextExpiry).toBe(NOW - 3000 + 4000);
+  });
+
+  it("returns nothing when the room is quiet", () => {
+    expect(recentSpeakers([line("u1", 30)], NOW)).toEqual({ speakers: new Set(), nextExpiry: null });
   });
 });

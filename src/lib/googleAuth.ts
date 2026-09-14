@@ -141,13 +141,46 @@ async function ensureInitialized(): Promise<void> {
 
 /* ------------------------------ Public API -------------------------------- */
 
+const PROMPT_SETTLE_MS = 4000;
+let promptPromise: Promise<void> | null = null;
+
+/**
+ * Show One Tap at most once at a time. GIS aborts an in-flight FedCM request
+ * whenever `prompt()` is called again ("FedCM get() rejects with AbortError"),
+ * which happens under React Strict Mode's double-run effects and when a token
+ * refresh overlaps a session restore. Concurrent callers share one prompt.
+ * Resolves when the prompt settles (credential received, not displayed, skipped,
+ * or dismissed) or after a timeout.
+ */
+function promptOnce(): Promise<void> {
+  if (promptPromise) return promptPromise;
+  promptPromise = new Promise<void>((resolve) => {
+    const unsub = onAuthChange(finish);
+    const timer = setTimeout(finish, PROMPT_SETTLE_MS);
+    function finish() {
+      clearTimeout(timer);
+      unsub();
+      resolve();
+    }
+    // FedCM only reports the *dismissed* moment; the display/skipped status
+    // methods are deprecated under FedCM and just log a warning. Anything else
+    // (credential arrives, or nothing happens) is covered by the listener/timeout.
+    window.google.accounts.id.prompt((moment: any) => {
+      if (moment?.isDismissedMoment?.()) finish();
+    });
+  }).finally(() => {
+    promptPromise = null;
+  });
+  return promptPromise;
+}
+
 /**
  * Silently restore a returning user's session (One Tap with `auto_select`).
  * Resolves once initialized; the credential — if any — arrives via the callback.
  */
 export async function restoreSession(): Promise<void> {
   await ensureInitialized();
-  window.google.accounts.id.prompt();
+  void promptOnce();
 }
 
 /** Render the official "Sign in with Google" button into `el`. */
@@ -170,7 +203,7 @@ export async function renderSignInButton(
 /** Imperative fallback sign-in (One Tap prompt). Prefer the rendered button. */
 export async function promptSignIn(): Promise<void> {
   await ensureInitialized();
-  window.google.accounts.id.prompt();
+  await promptOnce();
 }
 
 export async function signOut(): Promise<void> {
@@ -186,16 +219,7 @@ function refresh(): Promise<void> {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
     await ensureInitialized();
-    await new Promise<void>((resolve) => {
-      const unsub = onAuthChange(() => finish());
-      const timer = setTimeout(finish, 4000);
-      function finish() {
-        clearTimeout(timer);
-        unsub();
-        resolve();
-      }
-      window.google.accounts.id.prompt();
-    });
+    await promptOnce();
   })().finally(() => {
     refreshPromise = null;
   });

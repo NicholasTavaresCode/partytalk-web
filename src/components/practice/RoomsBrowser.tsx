@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, Sparkles, Radio } from "lucide-react";
+import { Plus, X, Radio, Sparkles } from "lucide-react";
 import { useRooms, useCreateRoom } from "@/lib/queries";
-import type { Room, RoomStatus } from "@/lib/types";
+import { ApiError } from "@/lib/apiClient";
+import { buildCreateRoomInput } from "@/lib/roomForm";
+import { ROOM_DURATIONS, type Room, type RoomDuration, type RoomStatus } from "@/lib/types";
 import { cn } from "@/lib/cn";
 import { RoomCard } from "./RoomCard";
 
@@ -12,13 +14,6 @@ const FILTERS: { label: string; value: "all" | RoomStatus }[] = [
   { label: "All", value: "all" },
   { label: "Open", value: "waiting" },
   { label: "Live", value: "live" },
-];
-
-const PERSONAS = [
-  "An encouraging coach who keeps everyone talking and celebrates good phrasing.",
-  "A curious interviewer who asks unexpected follow-up questions.",
-  "A playful debater who nudges people to defend an opinion.",
-  "A calm facilitator who keeps the group on a single thread.",
 ];
 
 export function RoomsBrowser() {
@@ -108,16 +103,24 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const create = useCreateRoom();
   const [topic, setTopic] = useState("");
-  const [persona, setPersona] = useState(PERSONAS[0]);
+  const [hostPicksTopic, setHostPicksTopic] = useState(false);
   const [maxParticipants, setMaxParticipants] = useState(5);
+  const [durationMinutes, setDurationMinutes] = useState<RoomDuration>(30);
+  const topicRef = useRef<HTMLInputElement>(null);
+
+  const input = buildCreateRoomInput({ topic, hostPicksTopic, maxParticipants, durationMinutes });
+  const hostUnavailable = create.isError && create.error instanceof ApiError && create.error.status === 503;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!topic.trim()) return;
-    create.mutate(
-      { topic: topic.trim(), facilitatorPersona: persona, maxParticipants },
-      { onSuccess: (room) => router.push(`/practice/${room.id}`) },
-    );
+    if (!input) return;
+    create.mutate(input, { onSuccess: (room) => router.push(`/practice/${room.id}`) });
+  };
+
+  const typeMyOwn = () => {
+    create.reset();
+    setHostPicksTopic(false);
+    setTimeout(() => topicRef.current?.focus(), 0);
   };
 
   return (
@@ -136,36 +139,45 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <label className="mt-6 block text-sm font-semibold text-on-surface">Opening topic</label>
-        <input
-          value={topic}
-          onChange={(e) => setTopic(e.target.value)}
-          placeholder="e.g. Weekend plans, first jobs, favourite films…"
-          className="mt-1.5 h-11 w-full rounded-lg border border-outline-variant px-3 outline-none focus:border-primary"
-          maxLength={120}
-          autoFocus
-        />
+        <label className="mt-6 flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-outline-variant px-3.5 py-3">
+          <span className="flex items-center gap-2 text-sm font-semibold text-on-surface">
+            <Sparkles className="h-4 w-4 text-primary" /> Let the AI host pick the opening topic
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            aria-checked={hostPicksTopic}
+            checked={hostPicksTopic}
+            onChange={(e) => {
+              create.reset();
+              setHostPicksTopic(e.target.checked);
+            }}
+            className="h-5 w-5 accent-primary"
+          />
+        </label>
 
-        <p className="mt-5 flex items-center gap-1.5 text-sm font-semibold text-on-surface">
-          <Sparkles className="h-4 w-4 text-primary" /> AI host style
-        </p>
-        <div className="mt-2 grid gap-2">
-          {PERSONAS.map((p) => (
-            <button
-              type="button"
-              key={p}
-              onClick={() => setPersona(p)}
-              className={cn(
-                "rounded-xl border px-3.5 py-2.5 text-left text-sm transition-colors",
-                persona === p
-                  ? "border-primary bg-primary-fixed/40 text-on-surface"
-                  : "border-outline-variant text-on-surface-variant hover:border-primary/40",
-              )}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
+        {hostPicksTopic ? (
+          <p className="mt-3 text-sm text-on-surface-variant">
+            The host will choose something to get the group talking — it&apos;s shown on the room once
+            it&apos;s created.
+          </p>
+        ) : (
+          <>
+            <label htmlFor="opening-topic" className="mt-5 block text-sm font-semibold text-on-surface">
+              Opening topic
+            </label>
+            <input
+              id="opening-topic"
+              ref={topicRef}
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder="e.g. Weekend plans, first jobs, favourite films…"
+              className="mt-1.5 h-11 w-full rounded-lg border border-outline-variant px-3 outline-none focus:border-primary"
+              maxLength={120}
+              autoFocus
+            />
+          </>
+        )}
 
         <div className="mt-5 flex items-center justify-between">
           <span className="text-sm font-semibold text-on-surface">Max participants</span>
@@ -191,11 +203,56 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
           Pick 1 for a solo test room. Capped at 5 while voice runs over a peer-to-peer mesh.
         </p>
 
-        {create.isError && (
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+          <span className="text-sm font-semibold text-on-surface">Length</span>
+          <div className="flex items-center gap-2">
+            {ROOM_DURATIONS.map((n) => (
+              <button
+                type="button"
+                key={n}
+                onClick={() => setDurationMinutes(n)}
+                className={cn(
+                  "h-9 rounded-lg border px-3 text-sm font-bold transition-colors",
+                  durationMinutes === n
+                    ? "border-primary bg-primary text-on-primary"
+                    : "border-outline-variant text-on-surface-variant hover:border-primary/40",
+                )}
+              >
+                {n} min
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="mt-1.5 text-xs text-on-surface-variant">
+          The session ends by itself when the time is up and everyone gets the report.
+        </p>
+
+        {hostUnavailable ? (
+          <div className="mt-4 rounded-xl border border-tertiary-fixed-dim bg-tertiary-fixed/20 p-3.5 text-sm text-on-surface">
+            <p className="font-semibold">The host couldn&apos;t pick a topic right now.</p>
+            <p className="mt-1 text-on-surface-variant">Try again in a moment, or type a topic yourself.</p>
+            <div className="mt-2.5 flex gap-2">
+              <button
+                type="submit"
+                disabled={create.isPending}
+                className="h-9 rounded-lg bg-primary px-4 text-sm font-semibold text-on-primary hover:opacity-90 disabled:opacity-50"
+              >
+                {create.isPending ? "Trying…" : "Try again"}
+              </button>
+              <button
+                type="button"
+                onClick={typeMyOwn}
+                className="h-9 rounded-lg border border-outline px-4 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low"
+              >
+                Type one myself
+              </button>
+            </div>
+          </div>
+        ) : create.isError ? (
           <p className="mt-4 text-sm font-medium text-error">
             {create.error instanceof Error ? create.error.message : "Could not create room"}
           </p>
-        )}
+        ) : null}
 
         <div className="mt-7 flex justify-end gap-3">
           <button
@@ -207,7 +264,7 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
           </button>
           <button
             type="submit"
-            disabled={create.isPending || !topic.trim()}
+            disabled={create.isPending || !input}
             className="h-11 rounded-lg bg-primary px-6 font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {create.isPending ? "Creating…" : "Create & enter"}
