@@ -1,0 +1,7 @@
+# What `gcloud builds submit` uploads (see deploy-hml.sh). Same rules as .dockerignore:
+# the image is built from scratch, and local .env files must never reach `next build`.
+.gcloudignore
+.git
+.gitignore
+#!include:.gitignore
+#!include:.dockerignore

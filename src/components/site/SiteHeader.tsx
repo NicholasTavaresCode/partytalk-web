@@ -5,13 +5,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { IELTS_ENABLED } from "@/lib/features";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { Button } from "@/components/ui/Button";
 
 const NAV = [
   { label: "How it works", href: "/#how" },
   { label: "Group Practice", href: "/practice" },
-  { label: "IELTS Prep", href: "/ielts" },
+  ...(IELTS_ENABLED ? [{ label: "IELTS Prep", href: "/ielts" }] : []),
 ];
 
 export function SiteHeader() {

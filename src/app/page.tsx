@@ -19,10 +19,12 @@ import { Button } from "@/components/ui/Button";
 import { RoomPreview } from "@/components/marketing/RoomPreview";
 import { ParticipantAvatar } from "@/components/practice/ParticipantAvatar";
 import { cn } from "@/lib/cn";
+import { IELTS_ENABLED } from "@/lib/features";
 
 export const metadata: Metadata = {
   description:
-    "Join small live rooms to practise English out loud with learners around the world, guided by a friendly AI host. Plus a faithful IELTS exam simulator.",
+    "Join small live rooms to practise English out loud with learners around the world, guided by a friendly AI host." +
+    (IELTS_ENABLED ? " Plus a faithful IELTS exam simulator." : ""),
 };
 
 const LANGUAGES = [
@@ -68,15 +70,18 @@ const FEATURES = [
     title: "Learners worldwide",
     body: "Practise with people from dozens of countries and hear English the way it's really spoken.",
   },
-  {
-    icon: GraduationCap,
-    title: "Serious exam prep",
-    body: "Switch to IELTS mode for a faithful, timed simulation of all four exam papers.",
-  },
+  ...(IELTS_ENABLED
+    ? [
+        {
+          icon: GraduationCap,
+          title: "Serious exam prep",
+          body: "Switch to IELTS mode for a faithful, timed simulation of all four exam papers.",
+        },
+      ]
+    : []),
 ];
 
 export default function HomePage() {
-  console.log(`NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID}`)
   return (
     <SiteLayout>
       {/* ---------------------------------- HERO --------------------------------- */}
@@ -103,9 +108,11 @@ export default function HomePage() {
                 Start a group room
                 <ArrowRight className="h-5 w-5" />
               </Button>
-              <Button href="/ielts" size="lg" variant="outline">
-                Practise for IELTS
-              </Button>
+              {IELTS_ENABLED && (
+                <Button href="/ielts" size="lg" variant="outline">
+                  Practise for IELTS
+                </Button>
+              )}
             </div>
 
             <div className="mt-9 flex items-center gap-4">
@@ -197,7 +204,7 @@ export default function HomePage() {
       {/* -------------------------------- FEATURES ------------------------------- */}
       <section className="bg-surface-container-low py-20">
         <Container>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className={cn("grid gap-4 sm:grid-cols-2", !IELTS_ENABLED && "lg:grid-cols-3")}>
             {FEATURES.map((f) => (
               <div
                 key={f.title}
@@ -217,6 +224,7 @@ export default function HomePage() {
       </section>
 
       {/* ------------------------------- IELTS PROMO ----------------------------- */}
+      {IELTS_ENABLED && (
       <section className="bg-white py-20">
         <Container>
           <div className="overflow-hidden rounded-[2rem] bg-primary text-on-primary">
@@ -271,6 +279,7 @@ export default function HomePage() {
           </div>
         </Container>
       </section>
+      )}
 
       {/* --------------------------------- CTA ----------------------------------- */}
       <section className="bg-surface-container-low py-20">

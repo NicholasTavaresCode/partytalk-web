@@ -5,6 +5,7 @@ import Link from "next/link";
 import { LogOut, ChevronDown } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useMe } from "@/lib/queries";
+import { IELTS_ENABLED } from "@/lib/features";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { ParticipantAvatar } from "@/components/practice/ParticipantAvatar";
 import { LevelBadge } from "@/components/practice/LevelBadge";
@@ -23,12 +24,14 @@ export function AppHeader() {
         </Link>
 
         <div className="flex items-center gap-2">
-          <Link
-            href="/ielts"
-            className="hidden rounded-lg px-3.5 py-2 text-[15px] font-medium text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface sm:block"
-          >
-            IELTS Prep
-          </Link>
+          {IELTS_ENABLED && (
+            <Link
+              href="/ielts"
+              className="hidden rounded-lg px-3.5 py-2 text-[15px] font-medium text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface sm:block"
+            >
+              IELTS Prep
+            </Link>
+          )}
 
           <div className="relative">
             <button

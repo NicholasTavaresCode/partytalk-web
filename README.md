@@ -10,8 +10,8 @@ This app talks to the **PartyTalk API** (NestJS) and authenticates with **Google
 
 | Service | Port | Notes |
 | --- | --- | --- |
-| PartyTalk API | `3000` | Runs separately; Swagger at http://localhost:3000/docs |
-| This web app | `3001` | `npm run dev` (already pinned to `-p 3001`) |
+| PartyTalk API | `8080` | Runs separately (`PORT=8080` in its `.env`); Swagger at http://localhost:8080/docs |
+| This web app | `3000` | `npm run dev` (already pinned to `-p 3000`) |
 
 ## Setup
 
@@ -20,35 +20,45 @@ Requires Node ≥ 18.18 (developed on Node 22).
 ```bash
 npm install
 cp .env.local.example .env.local   # then fill in the Google OAuth client ID
-npm run dev                         # http://localhost:3001
+npm run dev                         # http://localhost:3000
 ```
 
 `.env.local` values:
 
-- `NEXT_PUBLIC_API_BASE_URL` — REST base, default `http://localhost:3000/api/v1`
-- `NEXT_PUBLIC_API_SOCKET_URL` — Socket.IO origin, default `http://localhost:3000` (namespace `/rooms`)
+- `NEXT_PUBLIC_API_BASE_URL` — REST base, `http://localhost:8080/api/v1` in the example file
+- `NEXT_PUBLIC_API_SOCKET_URL` — Socket.IO origin, `http://localhost:8080` in the example file (namespace `/rooms`)
 - `NEXT_PUBLIC_GOOGLE_CLIENT_ID` — OAuth 2.0 **Web application** client ID (Google Cloud console →
-  APIs & Services → Credentials). Add `http://localhost:3001` to the client's **Authorized
+  APIs & Services → Credentials). It must be the same client ID the API verifies against
+  (`GOOGLE_OAUTH_CLIENT_ID`). Add `http://localhost:3000` to the client's **Authorized
   JavaScript origins**. Until it's filled in, the app runs but the sign-in screen shows a "not
   configured" notice.
+- `NEXT_PUBLIC_DISABLE_AUTH` / `NEXT_PUBLIC_DEV_BEARER_TOKEN` — optional, dev only. Skip the
+  sign-in gate, and optionally attach a real Google ID token to requests.
+
+Keep the two API URLs set. If they're missing, the app falls back to `localhost:3000`, which is
+this dev server rather than the API.
 
 ## How the room feature works
 
 1. **Auth** — "Sign in with Google" → Google ID token, attached as `Authorization: Bearer` on every
    REST call and in the Socket.IO handshake (`auth.token`). First sign-in prompts a quick profile
    (`PUT /users/me`).
-2. **Browse / create** — `GET /rooms`, `POST /rooms` (topic + AI host persona + max 5 participants).
+2. **Browse / create** — `GET /rooms` (only rooms you own or are invited to), `POST /rooms` (topic +
+   AI host persona + max 5 participants + emails to invite). Rooms are **invite-only**: inside the
+   room the owner can invite more people, revoke them (which removes them on the spot), or share an
+   invite link (`/practice/<id>?invite=<code>`) that adds whoever opens it to the guest list.
 3. **Live loop** — join via REST, then connect the `rooms` Socket.IO namespace. Each client
-   transcribes its own mic with the **browser Web Speech API** and emits `transcript` events (typed
-   fallback where the API is unavailable, e.g. Firefox). The backend AI facilitator pushes
+   transcribes its own mic with the **browser Web Speech API** and emits `transcript` events. The
+   transcript isn't shown to participants; it's what the AI host listens to. Browsers without the
+   API (e.g. Firefox) can't feed the AI. The backend AI facilitator pushes
    `topicSuggested` events (trigger: volume / silence / manual) which render live; `presence` tracks
    who's in.
 4. **Report** — the owner ends the room → backend generates the `RoomReport` (summary, highlights,
    suggestions, topics explored), delivered on `sessionEnded` and the room's `report` field.
-5. **Voice (peer-to-peer)** — a WebRTC **P2P mesh** client is wired to the `webrtc:*` signaling
-   contract in the API's `docs/audio-architecture.md`. That relay is a **backend milestone (M1) not
-   yet implemented**, so peer audio degrades gracefully (mic acquired, waiting for signaling) until
-   the backend ships it. The AI-topic-suggestion loop above works today without it.
+5. **Voice (peer-to-peer)** — participants hear each other over a WebRTC **P2P mesh**; the API
+   only relays the `webrtc:*` signaling (see its `docs/audio-architecture.md`), so audio never
+   touches the server. ICE servers come from the API: STUN, plus a TURN relay (with a short-lived
+   credential) where one is deployed, so peers on strict networks can still connect.
 
 ## Tech stack
 
@@ -88,7 +98,7 @@ src/
 | --- | --- | --- |
 | `/` | public | Marketing landing |
 | `/practice` | required | Browse + create rooms |
-| `/practice/[roomId]` | required | Live room: transcript, topic suggestions, report |
+| `/practice/[roomId]` | required + invited | Live room: voice, topic suggestions, report. `?invite=<code>` redeems an invite link |
 | `/ielts`, `/ielts/*` | public | Parked IELTS simulator (mock) |
 
 ## Notes

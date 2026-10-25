@@ -2,10 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, Sparkles, Radio } from "lucide-react";
+import { Plus, X, Sparkles, Radio, UserPlus } from "lucide-react";
 import { useRooms, useCreateRoom } from "@/lib/queries";
 import type { Room, RoomStatus } from "@/lib/types";
 import { cn } from "@/lib/cn";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { EmailListInput, useEmailList } from "./EmailListInput";
 import { RoomCard } from "./RoomCard";
 
 const FILTERS: { label: string; value: "all" | RoomStatus }[] = [
@@ -95,7 +97,9 @@ export function RoomsBrowser() {
         <div className="mt-4 flex flex-col items-center gap-2 rounded-3xl border border-outline-variant bg-white py-16 text-center">
           <Radio className="h-6 w-6 text-primary" />
           <p className="font-semibold text-on-surface">No rooms here yet</p>
-          <p className="text-sm text-on-surface-variant">Be the first to start one.</p>
+          <p className="text-sm text-on-surface-variant">
+            Start one, or ask a host to invite you — you only see rooms you&apos;re invited to.
+          </p>
         </div>
       )}
 
@@ -110,12 +114,22 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
   const [topic, setTopic] = useState("");
   const [persona, setPersona] = useState(PERSONAS[0]);
   const [maxParticipants, setMaxParticipants] = useState(5);
+  const { user } = useAuth();
+  const invites = useEmailList(user?.email);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!topic.trim()) return;
+    // Includes an address still typed in the field; null = it isn't an email (error shown).
+    const invitedEmails = invites.flush();
+    if (!invitedEmails) return;
     create.mutate(
-      { topic: topic.trim(), facilitatorPersona: persona, maxParticipants },
+      {
+        topic: topic.trim(),
+        facilitatorPersona: persona,
+        maxParticipants,
+        invitedEmails,
+      },
       { onSuccess: (room) => router.push(`/practice/${room.id}`) },
     );
   };
@@ -189,6 +203,15 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
         </div>
         <p className="mt-1.5 text-xs text-on-surface-variant">
           Pick 1 for a solo test room. Capped at 5 while voice runs over a peer-to-peer mesh.
+        </p>
+
+        <label className="mt-5 flex items-center gap-1.5 text-sm font-semibold text-on-surface">
+          <UserPlus className="h-4 w-4 text-primary" /> Invite people
+        </label>
+        <EmailListInput list={invites} />
+        <p className="mt-1.5 text-xs text-on-surface-variant">
+          Rooms are invite-only: just you and these Google accounts can see or join. You can add
+          people or share an invite link from inside the room.
         </p>
 
         {create.isError && (

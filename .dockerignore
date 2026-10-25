@@ -1,0 +1,8 @@
+# Docker build context. `.env*` must stay out: `next build` loads .env/.env.local, and
+# their localhost API URLs would be inlined into the bundle wherever a build arg is unset.
+node_modules
+.next
+.env*
+!.env.local.example
+.git
+tsconfig.tsbuildinfo

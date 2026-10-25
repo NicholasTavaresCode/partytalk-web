@@ -5,7 +5,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { ApiError } from "@/lib/apiClient";
 import { roomsApi } from "@/lib/api/rooms";
 import { usersApi } from "@/lib/api/users";
-import type { CreateRoomInput, UpsertProfile } from "@/lib/types";
+import type { CreateRoomInput, Room, UpsertProfile } from "@/lib/types";
 import {
   IELTS_MODULES,
   LISTENING_TEST,
@@ -48,6 +48,8 @@ export function useMe() {
         throw e;
       }
     },
+    // A 403 means "not on the allow-list" — retrying won't change it.
+    retry: (count, e) => !(e instanceof ApiError && e.status === 403) && count < 1,
   });
 }
 
@@ -77,6 +79,8 @@ export function useRoom(id: string) {
     queryKey: queryKeys.room(id),
     enabled: !!user && !!id,
     queryFn: () => roomsApi.get(id),
+    // 403 (not invited) / 404 are answers, not glitches — don't retry them.
+    retry: (count, e) => !(e instanceof ApiError && (e.status === 403 || e.status === 404)) && count < 1,
   });
 }
 
@@ -93,11 +97,26 @@ export function useRoomLifecycle(id: string) {
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: queryKeys.room(id) });
   return {
-    join: useMutation({ mutationFn: () => roomsApi.join(id), onSuccess: invalidate }),
+    join: useMutation({
+      mutationFn: (inviteCode?: string) => roomsApi.join(id, inviteCode),
+      onSuccess: invalidate,
+    }),
     leave: useMutation({ mutationFn: () => roomsApi.leave(id), onSuccess: invalidate }),
     start: useMutation({ mutationFn: () => roomsApi.start(id), onSuccess: invalidate }),
     end: useMutation({ mutationFn: () => roomsApi.end(id), onSuccess: invalidate }),
     suggest: useMutation({ mutationFn: () => roomsApi.suggestTopic(id) }),
+  };
+}
+
+/** Owner-only invite management; each call returns the updated room, cached directly. */
+export function useRoomInvites(id: string) {
+  const qc = useQueryClient();
+  const store = (room: Room) => qc.setQueryData(queryKeys.room(id), room);
+  return {
+    add: useMutation({ mutationFn: (emails: string[]) => roomsApi.addInvites(id, emails), onSuccess: store }),
+    revoke: useMutation({ mutationFn: (email: string) => roomsApi.revokeInvite(id, email), onSuccess: store }),
+    createLink: useMutation({ mutationFn: () => roomsApi.createInviteLink(id), onSuccess: store }),
+    disableLink: useMutation({ mutationFn: () => roomsApi.disableInviteLink(id), onSuccess: store }),
   };
 }
 

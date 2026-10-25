@@ -9,14 +9,18 @@ export const metadata: Metadata = {
 
 export default async function RoomPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ roomId: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { roomId } = await params;
+  // `?invite=<code>` comes from the owner's shareable invite link.
+  const { invite } = await searchParams;
   return (
     <RequireAuth>
       <ProfileGate>
-        <RoomExperience roomId={roomId} />
+        <RoomExperience roomId={roomId} inviteCode={typeof invite === "string" ? invite : undefined} />
       </ProfileGate>
     </RequireAuth>
   );

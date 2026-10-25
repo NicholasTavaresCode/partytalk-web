@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { cn } from "@/lib/cn";
+import { IELTS_ENABLED } from "@/lib/features";
 import { Wordmark } from "@/components/brand/Wordmark";
 
 const COLUMNS = [
@@ -10,16 +12,20 @@ const COLUMNS = [
       { label: "How it works", href: "/#how" },
     ],
   },
-  {
-    title: "IELTS",
-    links: [
-      { label: "IELTS overview", href: "/ielts" },
-      { label: "Listening", href: "/ielts/listening" },
-      { label: "Reading", href: "/ielts/reading" },
-      { label: "Writing", href: "/ielts/writing" },
-      { label: "Speaking", href: "/ielts/speaking" },
-    ],
-  },
+  ...(IELTS_ENABLED
+    ? [
+        {
+          title: "IELTS",
+          links: [
+            { label: "IELTS overview", href: "/ielts" },
+            { label: "Listening", href: "/ielts/listening" },
+            { label: "Reading", href: "/ielts/reading" },
+            { label: "Writing", href: "/ielts/writing" },
+            { label: "Speaking", href: "/ielts/speaking" },
+          ],
+        },
+      ]
+    : []),
   {
     title: "Company",
     links: [
@@ -33,7 +39,12 @@ const COLUMNS = [
 export function SiteFooter() {
   return (
     <footer className="border-t border-outline-variant bg-white">
-      <div className="mx-auto grid max-w-content gap-10 px-6 py-14 lg:grid-cols-[1.4fr_repeat(3,1fr)] lg:px-8">
+      <div
+        className={cn(
+          "mx-auto grid max-w-content gap-10 px-6 py-14 lg:px-8",
+          IELTS_ENABLED ? "lg:grid-cols-[1.4fr_repeat(3,1fr)]" : "lg:grid-cols-[1.4fr_repeat(2,1fr)]",
+        )}
+      >
         <div className="max-w-xs">
           <Wordmark />
           <p className="mt-4 text-sm leading-relaxed text-on-surface-variant">

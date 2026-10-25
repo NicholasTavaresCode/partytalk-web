@@ -13,9 +13,16 @@ export type RoomsSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
  * WsAuthenticator reads.
  */
 export async function connectRoomsSocket(): Promise<RoomsSocket> {
-  const token = await getIdToken();
   return io(`${env.socketUrl}/rooms`, {
-    auth: { token },
+    // A callback, not a value: Socket.IO calls it on every (re)connection attempt, so
+    // a reconnect after the 1-hour ID token expired (Cloud Run ends every socket at its
+    // request timeout) carries a fresh token instead of being refused forever.
+    auth: (cb) => {
+      void getIdToken().then(
+        (token) => cb({ token }),
+        () => cb({ token: null }),
+      );
+    },
     // Start with HTTP long-polling, then upgrade to WebSocket. This survives
     // reverse proxies that don't forward the WS upgrade (websocket-only would
     // fail outright there).

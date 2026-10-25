@@ -178,6 +178,18 @@ export async function signOut(): Promise<void> {
   if (initialized) window.google?.accounts?.id?.disableAutoSelect();
 }
 
+/**
+ * The API rejected `rejectedToken` (401). If it's still the current token, drop it so
+ * `useAuth()` reports signed-out and RequireAuth shows the sign-in screen, instead of
+ * the app failing call after call. Unlike signOut(), auto-select stays on, so signing
+ * back in is one click. A 401 for an older token (a refresh already replaced it) is
+ * ignored; auth-bypass mode has no session to drop.
+ */
+export function expireSession(rejectedToken: string): void {
+  if (env.authDisabled || !currentToken || currentToken !== rejectedToken) return;
+  setToken(null);
+}
+
 const EXPIRY_SKEW_MS = 60_000;
 let refreshPromise: Promise<void> | null = null;
 
@@ -204,8 +216,8 @@ function refresh(): Promise<void> {
 
 /**
  * A currently-valid Google ID token, or null. Silently re-issues when the token
- * is missing or near expiry; on failure the (stale) token surfaces a 401 that the
- * app turns back into a sign-in prompt.
+ * is missing or near expiry; on failure the (stale) token surfaces a 401, which
+ * apiClient turns back into the sign-in screen via expireSession().
  */
 export async function getIdToken(): Promise<string | null> {
   // Auth-bypass mode: attach the dev token (if any), never touch GIS.

@@ -2,25 +2,24 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Mic,
   MicOff,
   Sparkles,
-  Send,
   PhoneOff,
   Play,
   Radio,
   Crown,
   Lightbulb,
   CheckCircle2,
-  MessageSquareText,
   Loader2,
   VideoOff,
-  Captions,
-  X,
+  UserPlus,
 } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { ApiError } from "@/lib/apiClient";
 import { useMe, useRoom, useRoomLifecycle } from "@/lib/queries";
 import { useRoomSocket } from "@/lib/useRoomSocket";
 import { useSpeechRecognition } from "@/lib/useSpeechRecognition";
@@ -28,6 +27,8 @@ import { useVoiceMesh } from "@/lib/useVoiceMesh";
 import { Logo } from "@/components/brand/Logo";
 import { ParticipantAvatar } from "@/components/practice/ParticipantAvatar";
 import { LoadingScreen } from "@/components/app/LoadingScreen";
+import { InvitePanel } from "./InvitePanel";
+import { RoomAccessScreen } from "./RoomAccessScreen";
 import { cn } from "@/lib/cn";
 import type { RoomReport, SuggestionTrigger, TopicSuggestion } from "@/lib/types";
 
@@ -40,27 +41,53 @@ const TRIGGER: Record<SuggestionTrigger, { label: string; cls: string }> = {
 const clock = (iso: string) =>
   new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-export function RoomExperience({ roomId }: { roomId: string }) {
+/**
+ * The live room. Rooms are invite-only: the API answers 403 until the signed-in
+ * account is invited, so `inviteCode` (from an owner's invite link) is redeemed
+ * by joining; without one the visitor gets the "invite-only" screen.
+ */
+export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteCode?: string }) {
+  const router = useRouter();
   const { user } = useAuth();
   const { data: me } = useMe();
-  const { data: room, isLoading } = useRoom(roomId);
-  const { join, start, end, suggest } = useRoomLifecycle(roomId);
-  const rt = useRoomSocket(roomId);
+  const { data: room, isLoading, error: roomError } = useRoom(roomId);
+  const { join, leave, start, end, suggest } = useRoomLifecycle(roomId);
+  const roomErrorStatus = roomError instanceof ApiError ? roomError.status : undefined;
+  const isParticipant = !!user && !!room?.participantIds.includes(user.uid);
+  const rt = useRoomSocket(roomId, isParticipant);
 
   const [extra, setExtra] = useState<TopicSuggestion[]>([]);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [invitesOpen, setInvitesOpen] = useState(false);
+  // Speech-to-text isn't shown to anyone; it only feeds the AI host.
   const stt = useSpeechRecognition(rt.sendTranscript);
-  const voice = useVoiceMesh({ socket: rt.socket, roomId, enabled: room?.status === "live" });
+  const voice = useVoiceMesh({
+    socket: rt.socket,
+    roomId,
+    enabled: room?.status === "live" && isParticipant && !rt.removed,
+  });
 
-  // Auto-join once (idempotent server-side; a 409 just means already joined).
+  // Revoked mid-session: stop listening right away (the server already ignores us).
+  useEffect(() => {
+    if (rt.removed) stt.stop();
+  }, [rt.removed, stt]);
+
+  // Take a seat once (idempotent server-side). Invitees just join; a visitor with
+  // an invite link redeems it — the room itself stays 403 until they do.
   const joinedRef = useRef(false);
   useEffect(() => {
-    if (!room || !user || joinedRef.current) return;
-    if (!room.participantIds.includes(user.uid) && room.status !== "ended") {
-      joinedRef.current = true;
-      join.mutate();
-    }
-  }, [room, user, join]);
+    if (!user || joinedRef.current) return;
+    const needsSeat = room
+      ? !room.participantIds.includes(user.uid) && room.status !== "ended"
+      : roomErrorStatus === 403 && !!inviteCode;
+    if (!needsSeat) return;
+    joinedRef.current = true;
+    join.mutate(inviteCode, {
+      // The code has done its job — keep it out of the address bar and history.
+      onSuccess: () => {
+        if (inviteCode) router.replace(`/practice/${roomId}`);
+      },
+    });
+  }, [room, roomErrorStatus, user, join, inviteCode, router, roomId]);
 
   const suggestions = useMemo(() => {
     const byId = new Map<string, TopicSuggestion>();
@@ -68,6 +95,21 @@ export function RoomExperience({ roomId }: { roomId: string }) {
     return [...byId.values()].sort((a, b) => b.at.localeCompare(a.at));
   }, [rt.suggestions, extra]);
 
+  if (rt.removed) return <RoomAccessScreen reason="removed" />;
+  if (roomErrorStatus === 404) return <RoomAccessScreen reason="not-found" />;
+  if (roomErrorStatus === 403 && (!inviteCode || join.isError)) {
+    return (
+      <RoomAccessScreen
+        reason="not-invited"
+        email={user?.email}
+        detail={
+          inviteCode && join.error instanceof Error
+            ? `The invite link didn't work: ${join.error.message}`
+            : undefined
+        }
+      />
+    );
+  }
   if (isLoading || !room) return <LoadingScreen label="Joining room…" />;
 
   const isOwner = room.ownerId === user?.uid;
@@ -101,7 +143,20 @@ export function RoomExperience({ roomId }: { roomId: string }) {
               Waiting to start
             </span>
           )}
+          <ConnectionIndicator connection={rt.connection} onReconnect={rt.reconnect} />
           <VoiceIndicator voice={voice} live={live} />
+          {isOwner && (
+            <button
+              onClick={() => setInvitesOpen((v) => !v)}
+              aria-expanded={invitesOpen}
+              className="inline-flex items-center gap-1.5 rounded-pill bg-white/10 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-white/20"
+            >
+              <UserPlus className="h-3.5 w-3.5" /> Invite
+              {!!room.invitedEmails?.length && (
+                <span className="text-white/60">{room.invitedEmails.length}</span>
+              )}
+            </button>
+          )}
         </div>
       </header>
 
@@ -114,7 +169,6 @@ export function RoomExperience({ roomId }: { roomId: string }) {
           selfName={selfName}
           selfSpeaking={stt.listening}
           selfMuted={voice.muted}
-          panelOpen={panelOpen}
         />
 
         <CenterSuggestion
@@ -127,19 +181,11 @@ export function RoomExperience({ roomId }: { roomId: string }) {
             suggest.mutate(undefined, { onSuccess: (s) => setExtra((p) => [...p, s]) })
           }
           suggesting={suggest.isPending}
-          panelOpen={panelOpen}
         />
 
-        <TranscriptPanel
-          open={panelOpen}
-          onClose={() => setPanelOpen(false)}
-          segments={rt.segments}
-          selfUid={user?.uid}
-          stt={stt}
-          live={live}
-          connected={rt.connected}
-          onSend={rt.sendTranscript}
-        />
+        {isOwner && invitesOpen && (
+          <InvitePanel room={room} onClose={() => setInvitesOpen(false)} />
+        )}
       </main>
 
       {/* Bottom control bar (Meet-style) */}
@@ -149,12 +195,13 @@ export function RoomExperience({ roomId }: { roomId: string }) {
         stt={stt}
         voice={voice}
         connected={rt.connected}
-        panelOpen={panelOpen}
-        onTogglePanel={() => setPanelOpen((v) => !v)}
         onStart={() => start.mutate()}
         starting={start.isPending}
         onEnd={() => end.mutate()}
         ending={end.isPending}
+        // Give the seat back (rooms cap at 5), then go — even if the call fails.
+        onLeave={() => leave.mutate(undefined, { onSettled: () => router.push("/practice") })}
+        leaving={leave.isPending}
       />
 
       {/* Hidden remote audio (P2P mesh, when signaling is live) */}
@@ -182,7 +229,6 @@ function ParticipantGrid({
   selfName,
   selfSpeaking,
   selfMuted,
-  panelOpen,
 }: {
   room: { participantIds: string[]; ownerId: string };
   presence: Record<string, string | undefined>;
@@ -190,16 +236,10 @@ function ParticipantGrid({
   selfName: string;
   selfSpeaking: boolean;
   selfMuted: boolean;
-  panelOpen: boolean;
 }) {
   const ids = room.participantIds;
   return (
-    <div
-      className={cn(
-        "absolute inset-0 overflow-y-auto p-3 transition-[padding] duration-300 sm:p-5",
-        panelOpen && "lg:pr-[22rem]",
-      )}
-    >
+    <div className="absolute inset-0 overflow-y-auto p-3 sm:p-5">
       <div
         className={cn(
           "mx-auto grid h-full max-w-5xl auto-rows-fr place-content-center gap-3",
@@ -209,7 +249,8 @@ function ParticipantGrid({
         {ids.map((uid) => {
           const isSelf = uid === selfUid;
           const name = isSelf ? selfName : (presence[uid] ?? "Guest");
-          const online = isSelf || presence[uid] !== undefined;
+          // Membership, not the name: someone connected without a known name is still online.
+          const online = isSelf || uid in presence;
           return (
             <ParticipantTile
               key={uid}
@@ -274,7 +315,6 @@ function CenterSuggestion({
   history,
   onSuggest,
   suggesting,
-  panelOpen,
 }: {
   seedTopic: string;
   persona: string;
@@ -283,18 +323,12 @@ function CenterSuggestion({
   history: TopicSuggestion[];
   onSuggest: () => void;
   suggesting: boolean;
-  panelOpen: boolean;
 }) {
   const [showHistory, setShowHistory] = useState(false);
   const earlier = history.slice(1);
 
   return (
-    <div
-      className={cn(
-        "pointer-events-none absolute inset-0 flex items-center justify-center p-4 transition-[padding] duration-300",
-        panelOpen && "lg:pr-[22rem]",
-      )}
-    >
+    <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4">
       <div className="pointer-events-auto w-full max-w-lg rounded-3xl border border-white/10 bg-gradient-to-br from-primary-container to-primary p-6 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.7)] ring-1 ring-tertiary-fixed/20">
         <div className="flex items-center justify-between">
           <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-tertiary-fixed">
@@ -404,6 +438,34 @@ function VoiceIndicator({
   );
 }
 
+/** Surfaces a lost realtime connection — otherwise the room just silently stops updating. */
+function ConnectionIndicator({
+  connection,
+  onReconnect,
+}: {
+  connection: ReturnType<typeof useRoomSocket>["connection"];
+  onReconnect: () => void;
+}) {
+  if (connection === "reconnecting") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-pill bg-amber-400/15 px-2.5 py-1 text-xs font-bold text-amber-300">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Reconnecting…
+      </span>
+    );
+  }
+  if (connection === "failed") {
+    return (
+      <button
+        onClick={onReconnect}
+        className="inline-flex items-center gap-1.5 rounded-pill bg-red-500/20 px-2.5 py-1 text-xs font-bold text-red-300 hover:bg-red-500/30"
+      >
+        Disconnected · Reconnect
+      </button>
+    );
+  }
+  return null;
+}
+
 function RemoteAudio({ stream }: { stream: MediaStream }) {
   const ref = useRef<HTMLAudioElement>(null);
   useEffect(() => {
@@ -455,34 +517,30 @@ function ControlBar({
   stt,
   voice,
   connected,
-  panelOpen,
-  onTogglePanel,
   onStart,
   starting,
   onEnd,
   ending,
+  onLeave,
+  leaving,
 }: {
   live: boolean;
   isOwner: boolean;
   stt: ReturnType<typeof useSpeechRecognition>;
   voice: ReturnType<typeof useVoiceMesh>;
   connected: boolean;
-  panelOpen: boolean;
-  onTogglePanel: () => void;
   onStart: () => void;
   starting: boolean;
   onEnd: () => void;
   ending: boolean;
+  onLeave: () => void;
+  leaving: boolean;
 }) {
   const micReady = voice.status === "ready" || voice.status === "connected";
   return (
-    <footer className="flex h-20 shrink-0 items-center justify-between gap-2 px-4">
-      {/* Left — captions / transcript toggle */}
-      <div className="flex w-40 items-center">
-        <CtrlButton title="Transcript" active={panelOpen} onClick={onTogglePanel}>
-          <Captions className="h-5 w-5" />
-        </CtrlButton>
-      </div>
+    <footer className="flex h-20 shrink-0 items-center justify-center gap-2 px-4 sm:justify-between">
+      {/* Left — spacer mirroring the right column so the call controls stay centered */}
+      <div className="hidden w-40 sm:block" aria-hidden />
 
       {/* Center — call controls */}
       <div className="flex items-center gap-2 sm:gap-3">
@@ -502,12 +560,10 @@ function ControlBar({
           </CtrlButton>
         ) : (
           <CtrlButton
-            title="Type what you'd say (no speech-to-text here)"
-            active={panelOpen}
-            disabled={!live}
-            onClick={onTogglePanel}
+            title="This browser has no speech-to-text, so the AI host can't hear you — use Chrome or Edge"
+            disabled
           >
-            <MessageSquareText className="h-5 w-5" />
+            <MicOff className="h-5 w-5" />
           </CtrlButton>
         )}
 
@@ -545,135 +601,29 @@ function ControlBar({
           </button>
         )}
 
-        {/* Leave */}
-        <Link
-          href="/practice"
+        {/* Leave — frees the seat; coming back re-joins automatically */}
+        <button
+          onClick={onLeave}
+          disabled={leaving}
           title="Leave"
           aria-label="Leave"
-          className="grid h-12 w-14 place-items-center rounded-full bg-secondary text-on-secondary transition-colors hover:bg-secondary-container"
+          className="grid h-12 w-14 place-items-center rounded-full bg-secondary text-on-secondary transition-colors hover:bg-secondary-container disabled:opacity-60"
         >
-          <PhoneOff className="h-5 w-5" />
-        </Link>
+          {leaving ? <Loader2 className="h-5 w-5 animate-spin" /> : <PhoneOff className="h-5 w-5" />}
+        </button>
       </div>
 
       {/* Right — reserved to keep the center group centered */}
       <div className="hidden w-40 justify-end sm:flex">
-        <Link
-          href="/practice"
-          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-white/60 hover:text-white"
+        <button
+          onClick={onLeave}
+          disabled={leaving}
+          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-white/60 hover:text-white disabled:opacity-60"
         >
           <ArrowLeft className="h-4 w-4" /> Rooms
-        </Link>
-      </div>
-    </footer>
-  );
-}
-
-/* ---------------------- Transcript side panel ---------------------------- */
-
-function TranscriptPanel({
-  open,
-  onClose,
-  segments,
-  selfUid,
-  stt,
-  live,
-  connected,
-  onSend,
-}: {
-  open: boolean;
-  onClose: () => void;
-  segments: import("@/lib/types").TranscriptSegment[];
-  selfUid?: string;
-  stt: ReturnType<typeof useSpeechRecognition>;
-  live: boolean;
-  connected: boolean;
-  onSend: (text: string) => void;
-}) {
-  const scroller = useRef<HTMLDivElement>(null);
-  const [draft, setDraft] = useState("");
-  useEffect(() => {
-    scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
-  }, [segments.length, open]);
-
-  if (!open) return null;
-
-  return (
-    <aside className="absolute inset-y-0 right-0 z-10 flex w-full max-w-sm flex-col border-l border-outline-variant bg-white text-on-surface shadow-2xl lg:w-[22rem]">
-      <div className="flex items-center justify-between border-b border-outline-variant px-4 py-3">
-        <span className="flex items-center gap-2 text-sm font-bold">
-          <Captions className="h-4 w-4 text-primary" /> Live transcript
-        </span>
-        <button
-          onClick={onClose}
-          aria-label="Close transcript"
-          className="grid h-8 w-8 place-items-center rounded-lg text-on-surface-variant hover:bg-surface-container"
-        >
-          <X className="h-4 w-4" />
         </button>
       </div>
-
-      <div ref={scroller} className="exam-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-        {segments.length === 0 && (
-          <p className="mt-6 text-center text-sm text-on-surface-variant">
-            Nothing said yet. When people talk, their words appear here — that&apos;s what the AI host
-            listens to.
-          </p>
-        )}
-        {segments.map((s) => {
-          const mine = s.speakerId === selfUid;
-          return (
-            <div key={s.id} className="flex gap-2.5">
-              <ParticipantAvatar name={s.speakerName ?? "Guest"} size={28} />
-              <div className="min-w-0">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-sm font-bold text-on-surface">
-                    {mine ? "You" : (s.speakerName ?? "Guest")}
-                  </span>
-                  <span className="text-[11px] text-on-surface-variant">{clock(s.at)}</span>
-                </div>
-                <p className="mt-0.5 text-sm leading-relaxed text-on-surface-variant">{s.text}</p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Typed fallback for browsers without the Web Speech API (e.g. Firefox). */}
-      {live && !stt.supported && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (draft.trim()) {
-              onSend(draft);
-              setDraft("");
-            }
-          }}
-          className="border-t border-outline-variant p-3"
-        >
-          <p className="mb-2 flex items-center gap-1.5 text-[11px] text-on-surface-variant">
-            <MessageSquareText className="h-3.5 w-3.5" />
-            No speech-to-text here — type what you&apos;d say so the AI can follow.
-          </p>
-          <div className="flex items-center gap-2">
-            <input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder="Say something…"
-              className="h-10 flex-1 rounded-lg border border-outline-variant bg-surface-container-low px-3 text-sm outline-none focus:border-primary"
-            />
-            <button
-              type="submit"
-              disabled={!draft.trim() || !connected}
-              className="grid h-10 w-10 place-items-center rounded-lg bg-primary text-on-primary hover:opacity-90 disabled:opacity-40"
-              aria-label="Send"
-            >
-              <Send className="h-4 w-4" />
-            </button>
-          </div>
-        </form>
-      )}
-    </aside>
+    </footer>
   );
 }
 
