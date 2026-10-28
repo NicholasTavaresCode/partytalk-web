@@ -27,19 +27,11 @@ import { useVoiceMesh } from "@/lib/useVoiceMesh";
 import { Logo } from "@/components/brand/Logo";
 import { ParticipantAvatar } from "@/components/practice/ParticipantAvatar";
 import { LoadingScreen } from "@/components/app/LoadingScreen";
+import { AiHostPanel } from "./AiHostPanel";
 import { InvitePanel } from "./InvitePanel";
 import { RoomAccessScreen } from "./RoomAccessScreen";
 import { cn } from "@/lib/cn";
-import type { RoomReport, SuggestionTrigger, TopicSuggestion } from "@/lib/types";
-
-const TRIGGER: Record<SuggestionTrigger, { label: string; cls: string }> = {
-  volume: { label: "After lots of talk", cls: "bg-primary-fixed text-on-primary-fixed" },
-  silence: { label: "After a pause", cls: "bg-tertiary-fixed text-on-tertiary-fixed" },
-  manual: { label: "On request", cls: "bg-secondary/15 text-secondary" },
-};
-
-const clock = (iso: string) =>
-  new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+import type { RoomReport, TopicSuggestion } from "@/lib/types";
 
 /**
  * The live room. Rooms are invite-only: the API answers 403 until the signed-in
@@ -58,12 +50,17 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
 
   const [extra, setExtra] = useState<TopicSuggestion[]>([]);
   const [invitesOpen, setInvitesOpen] = useState(false);
+  // The AI host panel opens only on demand; a new topic while it's closed shows
+  // as a dot on its button (unread = newer than the last one the user saw).
+  const [aiOpen, setAiOpen] = useState(false);
+  const [seenTopicId, setSeenTopicId] = useState<string | undefined>(undefined);
   // Speech-to-text isn't shown to anyone; it only feeds the AI host.
   const stt = useSpeechRecognition(rt.sendTranscript);
   const voice = useVoiceMesh({
     socket: rt.socket,
     roomId,
     enabled: room?.status === "live" && isParticipant && !rt.removed,
+    selfUid: user?.uid,
   });
 
   // Revoked mid-session: stop listening right away (the server already ignores us).
@@ -147,7 +144,10 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
           <VoiceIndicator voice={voice} live={live} />
           {isOwner && (
             <button
-              onClick={() => setInvitesOpen((v) => !v)}
+              onClick={() => {
+                setInvitesOpen((v) => !v);
+                setAiOpen(false);
+              }}
               aria-expanded={invitesOpen}
               className="inline-flex items-center gap-1.5 rounded-pill bg-white/10 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-white/20"
             >
@@ -169,18 +169,28 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
           selfName={selfName}
           selfSpeaking={stt.listening}
           selfMuted={voice.muted}
+          panelOpen={aiOpen}
         />
 
-        <CenterSuggestion
+        <AiHostPanel
+          open={aiOpen}
+          onClose={() => {
+            setSeenTopicId(suggestions[0]?.id);
+            setAiOpen(false);
+          }}
           seedTopic={room.topic}
           persona={room.facilitatorPersona}
           live={live}
-          latest={suggestions[0]}
-          history={suggestions}
-          onSuggest={() =>
-            suggest.mutate(undefined, { onSuccess: (s) => setExtra((p) => [...p, s]) })
+          suggestions={suggestions}
+          // Only the host may ask; the API broadcasts the result to everyone, and
+          // the requester also adds it right away in case its socket is down.
+          onSuggest={
+            isOwner
+              ? () => suggest.mutate(undefined, { onSuccess: (s) => setExtra((p) => [...p, s]) })
+              : undefined
           }
           suggesting={suggest.isPending}
+          suggestError={suggest.isError ? "Couldn't get a topic. Try again in a moment." : undefined}
         />
 
         {isOwner && invitesOpen && (
@@ -202,6 +212,13 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
         // Give the seat back (rooms cap at 5), then go — even if the call fails.
         onLeave={() => leave.mutate(undefined, { onSettled: () => router.push("/practice") })}
         leaving={leave.isPending}
+        aiOpen={aiOpen}
+        aiUnread={!aiOpen && !!suggestions[0] && suggestions[0].id !== seenTopicId}
+        onToggleAi={() => {
+          setSeenTopicId(suggestions[0]?.id);
+          setAiOpen((v) => !v);
+          setInvitesOpen(false);
+        }}
       />
 
       {/* Hidden remote audio (P2P mesh, when signaling is live) */}
@@ -229,6 +246,7 @@ function ParticipantGrid({
   selfName,
   selfSpeaking,
   selfMuted,
+  panelOpen,
 }: {
   room: { participantIds: string[]; ownerId: string };
   presence: Record<string, string | undefined>;
@@ -236,10 +254,12 @@ function ParticipantGrid({
   selfName: string;
   selfSpeaking: boolean;
   selfMuted: boolean;
+  /** The AI host panel is docked on the right (desktop): keep tiles clear of it. */
+  panelOpen: boolean;
 }) {
   const ids = room.participantIds;
   return (
-    <div className="absolute inset-0 overflow-y-auto p-3 sm:p-5">
+    <div className={cn("absolute inset-0 overflow-y-auto p-3 sm:p-5", panelOpen && "lg:pr-[23rem]")}>
       <div
         className={cn(
           "mx-auto grid h-full max-w-5xl auto-rows-fr place-content-center gap-3",
@@ -305,111 +325,6 @@ function ParticipantTile({
   );
 }
 
-/* ----------------------- Center AI host suggestion ----------------------- */
-
-function CenterSuggestion({
-  seedTopic,
-  persona,
-  live,
-  latest,
-  history,
-  onSuggest,
-  suggesting,
-}: {
-  seedTopic: string;
-  persona: string;
-  live: boolean;
-  latest?: TopicSuggestion;
-  history: TopicSuggestion[];
-  onSuggest: () => void;
-  suggesting: boolean;
-}) {
-  const [showHistory, setShowHistory] = useState(false);
-  const earlier = history.slice(1);
-
-  return (
-    <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4">
-      <div className="pointer-events-auto w-full max-w-lg rounded-3xl border border-white/10 bg-gradient-to-br from-primary-container to-primary p-6 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.7)] ring-1 ring-tertiary-fixed/20">
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-tertiary-fixed">
-            <Sparkles className="h-4 w-4" /> AI host
-          </span>
-          {latest && (
-            <span
-              className={cn(
-                "rounded-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
-                TRIGGER[latest.trigger].cls,
-              )}
-            >
-              {TRIGGER[latest.trigger].label}
-            </span>
-          )}
-        </div>
-
-        {latest ? (
-          <>
-            <p className="mt-3 font-display text-2xl font-extrabold leading-snug">“{latest.topic}”</p>
-            <p className="mt-2 text-sm leading-relaxed text-white/80">{latest.rationale}</p>
-            <p className="mt-1 text-[11px] text-white/50">Suggested at {clock(latest.at)}</p>
-          </>
-        ) : (
-          <>
-            <p className="mt-3 font-display text-2xl font-extrabold leading-snug">“{seedTopic}”</p>
-            <p className="mt-2 text-sm leading-relaxed text-white/75">
-              {live
-                ? "Talk it through — I'll drop a fresh angle into the middle here as the conversation flows."
-                : "Your opening topic. New suggestions appear right here once the host starts the session."}
-            </p>
-          </>
-        )}
-
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/10 pt-4">
-          {live && (
-            <button
-              onClick={onSuggest}
-              disabled={suggesting}
-              className="inline-flex items-center gap-2 rounded-pill bg-white/15 px-4 py-2 text-sm font-semibold transition-colors hover:bg-white/25 disabled:opacity-60"
-            >
-              {suggesting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Lightbulb className="h-4 w-4" />
-              )}
-              Suggest a topic
-            </button>
-          )}
-          {earlier.length > 0 && (
-            <button
-              onClick={() => setShowHistory((v) => !v)}
-              className="inline-flex items-center gap-1.5 rounded-pill px-3 py-2 text-sm font-medium text-white/70 transition-colors hover:bg-white/10"
-            >
-              {showHistory ? "Hide" : "Earlier topics"} ({earlier.length})
-            </button>
-          )}
-        </div>
-
-        {showHistory && earlier.length > 0 && (
-          <div className="mt-3 max-h-40 space-y-2 overflow-y-auto pr-1">
-            {earlier.map((s) => (
-              <div key={s.id} className="rounded-xl bg-black/20 p-3">
-                <div className="flex items-center gap-2 text-[10px] text-white/50">
-                  <span className="font-bold uppercase tracking-wide">
-                    {TRIGGER[s.trigger].label}
-                  </span>
-                  · {clock(s.at)}
-                </div>
-                <p className="mt-1 text-sm font-semibold">“{s.topic}”</p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <p className="mt-4 text-[11px] italic text-white/40">{persona}</p>
-      </div>
-    </div>
-  );
-}
-
 /* --------------------------------- Voice --------------------------------- */
 
 function VoiceIndicator({
@@ -446,10 +361,19 @@ function ConnectionIndicator({
   connection: ReturnType<typeof useRoomSocket>["connection"];
   onReconnect: () => void;
 }) {
-  if (connection === "reconnecting") {
+  // The first connect normally takes well under a second; only a stuck one shows.
+  const [slowStart, setSlowStart] = useState(false);
+  useEffect(() => {
+    if (connection !== "connecting") return;
+    const timer = setTimeout(() => setSlowStart(true), 5000);
+    return () => clearTimeout(timer);
+  }, [connection]);
+
+  if (connection === "reconnecting" || (connection === "connecting" && slowStart)) {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-pill bg-amber-400/15 px-2.5 py-1 text-xs font-bold text-amber-300">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Reconnecting…
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />{" "}
+        {connection === "connecting" ? "Connecting…" : "Reconnecting…"}
       </span>
     );
   }
@@ -523,6 +447,9 @@ function ControlBar({
   ending,
   onLeave,
   leaving,
+  aiOpen,
+  aiUnread,
+  onToggleAi,
 }: {
   live: boolean;
   isOwner: boolean;
@@ -535,6 +462,10 @@ function ControlBar({
   ending: boolean;
   onLeave: () => void;
   leaving: boolean;
+  aiOpen: boolean;
+  /** A topic arrived that the user hasn't opened the panel for yet. */
+  aiUnread: boolean;
+  onToggleAi: () => void;
 }) {
   const micReady = voice.status === "ready" || voice.status === "connected";
   return (
@@ -544,6 +475,23 @@ function ControlBar({
 
       {/* Center — call controls */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* AI host topics — on demand, never over the participants */}
+        <div className="relative">
+          <CtrlButton
+            title={aiUnread ? "AI host — new topic" : "AI host topics"}
+            active={aiOpen}
+            onClick={onToggleAi}
+          >
+            <Sparkles className="h-5 w-5" />
+          </CtrlButton>
+          {aiUnread && (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute right-0.5 top-0.5 h-3 w-3 rounded-full bg-tertiary-fixed ring-2 ring-[#202124]"
+            />
+          )}
+        </div>
+
         {/* Talk to the AI (browser speech-to-text) */}
         {stt.supported ? (
           <CtrlButton

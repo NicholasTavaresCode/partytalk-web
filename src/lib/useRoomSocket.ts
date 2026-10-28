@@ -62,6 +62,7 @@ export function useRoomSocket(roomId: string, isParticipant: boolean): RoomSocke
 
   useEffect(() => {
     let active = true;
+    let everConnected = false;
     let s: RoomsSocket | undefined;
 
     // Seed suggestions so late joiners see the topics so far.
@@ -97,6 +98,16 @@ export function useRoomSocket(roomId: string, isParticipant: boolean): RoomSocke
         sock.on("connect", () => {
           retriesRef.current = 0;
           setConnection("connected");
+          // After a reconnect (often onto another API instance), catch up on
+          // whatever changed while we were offline: participants, status, topics.
+          if (everConnected) {
+            void queryClient.invalidateQueries({ queryKey: queryKeys.room(roomId) });
+            void roomsApi
+              .getSuggestions(roomId, 50)
+              .then((s2) => active && setSuggestions(s2))
+              .catch(() => {});
+          }
+          everConnected = true;
         });
         sock.on("disconnect", (reason) => {
           if (reason === "io client disconnect") return; // we closed it ourselves

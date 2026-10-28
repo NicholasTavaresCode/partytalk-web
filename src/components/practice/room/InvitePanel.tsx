@@ -136,7 +136,7 @@ export function InvitePanel({ room, onClose }: { room: Room; onClose: () => void
 
           {emails.length === 0 ? (
             <p className="mt-3 text-sm text-on-surface-variant">
-              Nobody yet — only you can open this room.
+              Nobody yet — only you can open this room. People you invite get an email with the link.
             </p>
           ) : (
             <ul className="mt-3 space-y-1.5">

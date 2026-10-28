@@ -23,6 +23,8 @@ interface Options {
   socket: RoomsSocket | null;
   roomId: string;
   enabled: boolean;
+  /** The signed-in user's uid — breaks offer glare deterministically (see onOffer). */
+  selfUid?: string;
 }
 
 /**
@@ -38,7 +40,7 @@ interface Options {
  * deployment has a relay, TURN with a short-lived credential for this user — what
  * lets peers on strict NATs (mobile data, corporate Wi-Fi) still hear each other.
  */
-export function useVoiceMesh({ socket, roomId, enabled }: Options) {
+export function useVoiceMesh({ socket, roomId, enabled, selfUid }: Options) {
   const [micStatus, setMicStatus] = useState<Exclude<VoiceStatus, "connected">>("off");
   const [muted, setMuted] = useState(false);
   const [remoteStreams, setRemoteStreams] = useState<RemoteStream[]>([]);
@@ -163,6 +165,11 @@ export function useVoiceMesh({ socket, roomId, enabled }: Options) {
     };
 
     const onOffer = async ({ fromUid, sdp }: { fromUid: string; sdp: RTCSessionDescriptionInit }) => {
+      // Glare: we joined at the same moment (everyone does when the host starts)
+      // and offered each other. The lower uid keeps its own offer — the peer will
+      // answer it — and the higher uid drops its offer and answers this one.
+      const mine = peersRef.current.get(fromUid);
+      if (mine?.signalingState === "have-local-offer" && selfUid && selfUid < fromUid) return;
       const pc = createPeer(fromUid);
       await pc.setRemoteDescription(sdp);
       await flushIce(fromUid, pc);
@@ -173,10 +180,11 @@ export function useVoiceMesh({ socket, roomId, enabled }: Options) {
 
     const onAnswer = async ({ fromUid, sdp }: { fromUid: string; sdp: RTCSessionDescriptionInit }) => {
       const pc = peersRef.current.get(fromUid);
-      if (pc) {
-        await pc.setRemoteDescription(sdp);
-        await flushIce(fromUid, pc);
-      }
+      // Only an outstanding offer takes an answer; anything else replies to an
+      // offer that glare resolution or a re-join already replaced.
+      if (pc?.signalingState !== "have-local-offer") return;
+      await pc.setRemoteDescription(sdp);
+      await flushIce(fromUid, pc);
     };
 
     const onIce = async ({ fromUid, candidate }: { fromUid: string; candidate: RTCIceCandidateInit }) => {
@@ -213,7 +221,7 @@ export function useVoiceMesh({ socket, roomId, enabled }: Options) {
       localStreamRef.current = null;
       setMicStatus("off");
     };
-  }, [enabled, socket, roomId, addRemote, removePeer, removeAllPeers]);
+  }, [enabled, socket, roomId, selfUid, addRemote, removePeer, removeAllPeers]);
 
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current;

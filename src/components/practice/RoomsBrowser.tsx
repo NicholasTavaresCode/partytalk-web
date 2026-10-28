@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, Sparkles, Radio, UserPlus } from "lucide-react";
+import { Info, Plus, X, Sparkles, Radio, UserPlus } from "lucide-react";
 import { useRooms, useCreateRoom } from "@/lib/queries";
 import type { Room, RoomStatus } from "@/lib/types";
 import { cn } from "@/lib/cn";
@@ -116,6 +116,10 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
   const [maxParticipants, setMaxParticipants] = useState(5);
   const { user } = useAuth();
   const invites = useEmailList(user?.email);
+  const invited = invites.emails.length;
+  const seats = maxParticipants - 1; // the host takes one
+  // Don't throw away a half-filled form on a stray click outside it.
+  const dirty = !!topic.trim() || invited > 0 || !!invites.draft.trim();
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,13 +139,18 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+      onClick={() => {
+        if (!dirty) onClose();
+      }}
+    >
       <form
         onClick={(e) => e.stopPropagation()}
         onSubmit={submit}
-        className="w-full max-w-lg rounded-3xl border border-outline-variant bg-white p-7 shadow-2xl"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col rounded-3xl border border-outline-variant bg-white shadow-2xl"
       >
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between border-b border-outline-variant px-7 pb-4 pt-6">
           <h2 className="font-display text-xl font-extrabold tracking-tight text-primary">
             Create a room
           </h2>
@@ -150,77 +159,104 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <label className="mt-6 block text-sm font-semibold text-on-surface">Opening topic</label>
-        <input
-          value={topic}
-          onChange={(e) => setTopic(e.target.value)}
-          placeholder="e.g. Weekend plans, first jobs, favourite films…"
-          className="mt-1.5 h-11 w-full rounded-lg border border-outline-variant px-3 outline-none focus:border-primary"
-          maxLength={120}
-          autoFocus
-        />
+        {/* Scrolls on short screens; the title and the buttons stay put. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-7 pb-5 pt-5">
+          <label className="block text-sm font-semibold text-on-surface">Opening topic</label>
+          <input
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            placeholder="e.g. Weekend plans, first jobs, favourite films…"
+            className="mt-1.5 h-11 w-full rounded-lg border border-outline-variant px-3 outline-none focus:border-primary"
+            maxLength={120}
+            autoFocus
+          />
 
-        <p className="mt-5 flex items-center gap-1.5 text-sm font-semibold text-on-surface">
-          <Sparkles className="h-4 w-4 text-primary" /> AI host style
-        </p>
-        <div className="mt-2 grid gap-2">
-          {PERSONAS.map((p) => (
-            <button
-              type="button"
-              key={p}
-              onClick={() => setPersona(p)}
-              className={cn(
-                "rounded-xl border px-3.5 py-2.5 text-left text-sm transition-colors",
-                persona === p
-                  ? "border-primary bg-primary-fixed/40 text-on-surface"
-                  : "border-outline-variant text-on-surface-variant hover:border-primary/40",
-              )}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-5 flex items-center justify-between">
-          <span className="text-sm font-semibold text-on-surface">Max participants</span>
-          <div className="flex items-center gap-2">
-            {[1, 2, 3, 4, 5].map((n) => (
+          <p className="mt-5 flex items-center gap-1.5 text-sm font-semibold text-on-surface">
+            <Sparkles className="h-4 w-4 text-primary" /> AI host style
+          </p>
+          <div className="mt-2 grid gap-2">
+            {PERSONAS.map((p) => (
               <button
                 type="button"
-                key={n}
-                onClick={() => setMaxParticipants(n)}
+                key={p}
+                onClick={() => setPersona(p)}
                 className={cn(
-                  "h-9 w-9 rounded-lg border text-sm font-bold transition-colors",
-                  maxParticipants === n
-                    ? "border-primary bg-primary text-on-primary"
+                  "rounded-xl border px-3.5 py-2.5 text-left text-sm transition-colors",
+                  persona === p
+                    ? "border-primary bg-primary-fixed/40 text-on-surface"
                     : "border-outline-variant text-on-surface-variant hover:border-primary/40",
                 )}
               >
-                {n}
+                {p}
               </button>
             ))}
           </div>
-        </div>
-        <p className="mt-1.5 text-xs text-on-surface-variant">
-          Pick 1 for a solo test room. Capped at 5 while voice runs over a peer-to-peer mesh.
-        </p>
 
-        <label className="mt-5 flex items-center gap-1.5 text-sm font-semibold text-on-surface">
-          <UserPlus className="h-4 w-4 text-primary" /> Invite people
-        </label>
-        <EmailListInput list={invites} />
-        <p className="mt-1.5 text-xs text-on-surface-variant">
-          Rooms are invite-only: just you and these Google accounts can see or join. You can add
-          people or share an invite link from inside the room.
-        </p>
+          <div className="mt-5 flex items-center justify-between">
+            <span className="text-sm font-semibold text-on-surface">Max participants</span>
+            <div className="flex items-center gap-2">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  type="button"
+                  key={n}
+                  onClick={() => setMaxParticipants(n)}
+                  className={cn(
+                    "h-9 w-9 rounded-lg border text-sm font-bold transition-colors",
+                    maxParticipants === n
+                      ? "border-primary bg-primary text-on-primary"
+                      : "border-outline-variant text-on-surface-variant hover:border-primary/40",
+                  )}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Next to the seat picker, where the eye is when it changes. */}
+          {invited > seats ? (
+            <p className="mt-2 flex items-start gap-2 rounded-lg bg-tertiary-fixed/40 px-3 py-2 text-xs text-on-tertiary-fixed-variant">
+              <Info className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
+              {seats === 0
+                ? "With 1 participant, the people you invite won't be able to join. Pick more seats to let them in."
+                : `${invited} invited for ${seats} ${seats === 1 ? "seat" : "seats"} besides you: the first ${seats} to arrive get in.`}
+            </p>
+          ) : (
+            <p className="mt-1.5 text-xs text-on-surface-variant">
+              Pick 1 for a solo test room. Capped at 5 while voice runs over a peer-to-peer mesh.
+            </p>
+          )}
 
-        {create.isError && (
-          <p className="mt-4 text-sm font-medium text-error">
-            {create.error instanceof Error ? create.error.message : "Could not create room"}
+          <div className="mt-5 flex items-center justify-between gap-3">
+            <label htmlFor="invite-email" className="flex items-center gap-1.5 text-sm font-semibold text-on-surface">
+              <UserPlus className="h-4 w-4 text-primary" /> Invite people
+            </label>
+            {invited > 0 && (
+              <span className="flex items-center gap-2 text-xs text-on-surface-variant">
+                {invited} invited
+                {invited > 1 && (
+                  <>
+                    <span aria-hidden>·</span>
+                    <button type="button" onClick={invites.clear} className="font-semibold text-primary hover:underline">
+                      Remove all
+                    </button>
+                  </>
+                )}
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 text-xs text-on-surface-variant">
+            Only you and these Google accounts can join. Each one gets an email with the room link.
           </p>
-        )}
+          <EmailListInput list={invites} id="invite-email" />
 
-        <div className="mt-7 flex justify-end gap-3">
+          {create.isError && (
+            <p className="mt-4 text-sm font-medium text-error">
+              {create.error instanceof Error ? create.error.message : "Could not create room"}
+            </p>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-3 border-t border-outline-variant px-7 py-4">
           <button
             type="button"
             onClick={onClose}
@@ -233,7 +269,7 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
             disabled={create.isPending || !topic.trim()}
             className="h-11 rounded-lg bg-primary px-6 font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {create.isPending ? "Creating…" : "Create & enter"}
+            {create.isPending ? "Creating…" : invited ? `Create & invite ${invited}` : "Create & enter"}
           </button>
         </div>
       </form>
