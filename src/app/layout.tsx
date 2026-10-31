@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { arimo, sora } from "@/lib/fonts";
+import { bricolage, jakarta, spaceGrotesk } from "@/lib/fonts";
 import { Providers } from "@/components/providers";
 import { cn } from "@/lib/cn";
 import "./globals.css";
@@ -19,7 +19,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={cn(arimo.variable, sora.variable)}>
+    <html lang="en" className={cn(jakarta.variable, bricolage.variable, spaceGrotesk.variable)}>
       <body className="min-h-screen font-sans">
         <Providers>{children}</Providers>
       </body>

@@ -1,145 +1,175 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FileText, Mic, PhoneOff, Sparkles, UserPlus } from "lucide-react";
+import { Bot, Timer } from "lucide-react";
 import { ParticipantAvatar } from "@/components/practice/ParticipantAvatar";
 import { cn } from "@/lib/cn";
 
-const PEOPLE = ["Lucas", "Mei", "Omar", "Sofia"];
+const PEOPLE = ["Lucas", "Mei", "Omar"];
 /** Who talks on each tick — not round-robin, so it reads like a conversation. */
-const SPEAKERS = [0, 2, 1, 3, 2, 0];
+const SPEAKERS = [0, 2, 1, 2, 0, 1];
 
-/** The kind of pivot the AI host suggests from what the room has been saying. */
-const TOPICS = [
-  {
-    topic: "Would you rather live by the sea or in the mountains?",
-    why: "You've all brought up weekend trips.",
-  },
-  {
-    topic: "The best meal you've ever had while travelling",
-    why: "Builds on Mei's story about Lisbon.",
-  },
-  {
-    topic: "A skill you'd love to learn this year",
-    why: "A fresh angle after all the work talk.",
-  },
+/** Lines the AI host says when it moves the room on — always somewhere unrelated. */
+const PIVOTS = [
+  { lead: "Ok. Now let's talk about", topic: "the Usain Bolt record", when: "After lots of talk" },
+  { lead: "All right. Let's talk about", topic: "the movie Titanic", when: "After a pause" },
+  { lead: "New topic! Should cities", topic: "ban cars from the centre?", when: "After lots of talk" },
 ];
 
 const TICK_MS = 2400;
 const TICKS_PER_TOPIC = 3;
+/** The mock session's clock starts here and counts down a second per second. */
+const START_SECONDS = 12 * 60 + 44;
 
 /**
- * Decorative live room for the landing hero, styled like the real one
- * (RoomExperience): the speaker moves around and the AI host's topic changes
- * every few seconds. Holds still for people who prefer reduced motion.
+ * Decorative live room for the landing hero: the speaker moves around, the AI
+ * host announces a new, unrelated topic every few seconds, and the clock runs.
+ * Holds still for people who prefer reduced motion.
  */
 export function RoomPreview({ className }: { className?: string }) {
-  const [tick, setTick] = useState(0);
+  const [seconds, setSeconds] = useState(0);
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const id = setInterval(() => setTick((t) => t + 1), TICK_MS);
+    const id = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(id);
   }, []);
 
+  const tick = Math.floor((seconds * 1000) / TICK_MS);
   const speaker = SPEAKERS[tick % SPEAKERS.length];
-  const topicIndex = Math.floor(tick / TICKS_PER_TOPIC) % TOPICS.length;
-  const { topic, why } = TOPICS[topicIndex];
+  const pivotIndex = Math.floor(tick / TICKS_PER_TOPIC) % PIVOTS.length;
+  const pivot = PIVOTS[pivotIndex];
+  const left = Math.max(0, START_SECONDS - seconds);
+  const clock = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
 
   return (
     <div className={cn("relative", className)} aria-hidden>
-      <div className="absolute -inset-8 rounded-[3rem] bg-primary-fixed-dim/15 blur-3xl" />
+      {/* Stickers */}
+      <span className="absolute -right-2 -top-4 z-20 flex rotate-3 items-center gap-1.5 rounded-pill border-2 border-ink bg-coral px-3 py-1 font-display text-xs font-bold text-ink shadow-pop-sm motion-safe:animate-wiggle">
+        Topic curveball 🔥
+      </span>
+      <span className="absolute -bottom-4 -left-3 z-20 flex -rotate-3 items-center gap-1.5 rounded-pill border-2 border-ink bg-lime px-3 py-1 font-display text-xs font-bold text-ink shadow-pop-sm">
+        ⚡ Report when it ends
+      </span>
 
-      <div className="relative rounded-[1.75rem] bg-[#202124] p-3 shadow-[0_40px_100px_-30px_rgba(0,0,0,0.8)] ring-1 ring-white/10">
-        <div className="flex items-center justify-between px-2 pb-3 pt-1.5">
-          <div className="flex items-center gap-2.5">
-            <span className="inline-flex items-center gap-1.5 rounded-pill bg-secondary-container px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-              <span className="h-1.5 w-1.5 rounded-full bg-white motion-safe:animate-pulse" /> Live
+      <div className="relative space-y-3.5 overflow-hidden rounded-3xl border-2 border-ink bg-white p-4 shadow-pop-lg lg:p-5 short:space-y-2.5 short:p-4">
+        {/* Room title + clock */}
+        <div className="flex items-center justify-between gap-3 border-b border-ink/10 pb-3 short:pb-2.5">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="relative flex h-3 w-3 shrink-0">
+              <span className="absolute inset-0 rounded-full bg-lime motion-safe:animate-ping" />
+              <span className="relative h-3 w-3 rounded-full border border-ink bg-lime" />
             </span>
-            <span className="text-sm font-semibold text-white">Sunday coffee chat</span>
+            <div className="min-w-0">
+              <p className="flex items-center gap-1.5 font-display text-base font-bold leading-tight text-ink">
+                <span className="truncate">Sunday coffee chat</span>
+                <span className="rounded-pill bg-coral/15 px-2 py-px font-label text-[10px] font-bold uppercase tracking-wider text-secondary">
+                  Live
+                </span>
+              </p>
+              <p className="text-[11px] font-medium text-on-surface-variant">4 of 5 seats · 30-min session</p>
+            </div>
           </div>
-          <span className="text-xs tabular-nums text-white/45">4 of 5 seats</span>
+          <span className="flex shrink-0 items-center gap-1 rounded-pill border border-ink/10 bg-surface-container-low px-2.5 py-1 font-label text-xs font-bold tabular-nums text-on-surface-variant">
+            <Timer className="h-3.5 w-3.5" /> {clock}
+          </span>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
+        {/* The host's latest line */}
+        <div className="rounded-2xl border-2 border-ink bg-gradient-to-r from-amber-200 via-lime to-lime-light p-3 shadow-pop-sm">
+          <div className="flex items-start gap-2.5">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ink text-lime">
+              <Bot className="h-4 w-4" />
+            </span>
+            <div key={pivotIndex} className="min-w-0 space-y-1 motion-safe:animate-topic-in">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-pill bg-white px-2 py-px font-label text-[10px] font-bold uppercase tracking-wider text-purple">
+                  AI host · New topic
+                </span>
+                <span className="text-[10px] font-bold text-ink/70">{pivot.when}</span>
+              </div>
+              <p className="font-display text-sm font-bold leading-snug text-ink lg:text-[15px]">
+                “{pivot.lead}{" "}
+                <span className="rounded bg-white px-1 font-extrabold underline decoration-coral decoration-2 underline-offset-2">
+                  {pivot.topic}
+                </span>
+                .”
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Speakers + the AI host's own tile */}
+        <div className="grid grid-cols-2 gap-2.5">
           {PEOPLE.map((name, i) => {
             const speaking = i === speaker;
             return (
               <div
                 key={name}
                 className={cn(
-                  "relative grid aspect-[16/11] place-items-center rounded-2xl bg-[#3c4043] ring-2 transition-colors duration-500",
-                  speaking ? "ring-emerald-400" : "ring-transparent",
+                  "flex items-center gap-2.5 rounded-xl p-2.5 transition-colors duration-300",
+                  speaking ? "border-2 border-ink bg-lime/25" : "border-2 border-ink/10 bg-surface-container-low",
                 )}
               >
-                <ParticipantAvatar name={name} size={60} />
-                <span className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-lg bg-black/45 px-2 py-1 text-[11px] font-semibold text-white">
-                  {speaking ? <Equalizer /> : <Mic className="h-3 w-3 text-white/70" />}
-                  {name}
-                </span>
+                <ParticipantAvatar name={name} size={38} className="border-2 border-ink" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-display text-xs font-bold text-ink">{name}</p>
+                  {speaking ? (
+                    <Equalizer />
+                  ) : (
+                    <span className="mt-0.5 inline-block rounded bg-surface-container-high px-1.5 py-px text-[10px] font-semibold text-on-surface-variant">
+                      Listening
+                    </span>
+                  )}
+                </div>
               </div>
             );
           })}
+          <div className="flex items-center gap-2.5 rounded-xl border-2 border-ink bg-purple p-2.5 text-white">
+            <span className="grid h-[38px] w-[38px] shrink-0 place-items-center rounded-full bg-lime font-display text-xs font-extrabold text-ink">
+              AI
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-display text-xs font-bold">AI host</p>
+              <span className="text-[10px] font-bold text-lime">Listening in</span>
+            </div>
+          </div>
         </div>
 
-        <div className="mt-3 flex items-center justify-end gap-2.5 px-1 pb-1">
-          <ControlDot>
-            <Mic className="h-4 w-4" />
-          </ControlDot>
-          <ControlDot className="relative bg-white/20">
-            <Sparkles className="h-4 w-4 text-tertiary-fixed" />
-            <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-tertiary-fixed ring-2 ring-[#202124]" />
-          </ControlDot>
-          <ControlDot>
-            <UserPlus className="h-4 w-4" />
-          </ControlDot>
-          <ControlDot className="w-14 bg-secondary-container">
-            <PhoneOff className="h-4 w-4" />
-          </ControlDot>
+        {/* What everyone gets when the room ends */}
+        <div className="space-y-2 rounded-2xl border-2 border-ink bg-cream p-2.5 short:hidden sm:short:block">
+          <div className="flex items-center justify-between">
+            <span className="font-display text-xs font-bold text-ink">📊 Room report</span>
+            <span className="rounded-pill border border-ink bg-lime px-2 py-0.5 font-label text-[10px] font-bold text-ink">
+              For the whole group
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            {[
+              { value: "4", label: "Topics explored", cls: "text-ink" },
+              { value: "3", label: "Highlights", cls: "text-purple" },
+              { value: "3", label: "Suggestions", cls: "text-secondary" },
+            ].map((s) => (
+              <div key={s.label} className="rounded-xl border border-ink/10 bg-white p-1.5">
+                <p className={cn("font-display text-sm font-extrabold", s.cls)}>{s.value}</p>
+                <p className="text-[10px] font-semibold leading-tight text-on-surface-variant">{s.label}</p>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
-
-      {/* The AI host's latest topic, as in the room's ✨ panel. */}
-      <div className="absolute -bottom-12 -left-12 w-[17.5rem] -rotate-2 short:-bottom-14 short:w-[15rem] rounded-2xl bg-gradient-to-br from-primary-container to-on-primary-fixed-variant p-4 text-white shadow-2xl ring-1 ring-tertiary-fixed/25 xl:-left-16">
-        <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-tertiary-fixed">
-          <Sparkles className="h-3.5 w-3.5" /> AI host · Try this topic
-        </p>
-        <div key={topicIndex} className="motion-safe:animate-topic-in">
-          <p className="mt-2 font-display text-[15px] font-bold leading-snug">“{topic}”</p>
-          <p className="mt-1.5 text-xs text-white/65 short:hidden">{why}</p>
-        </div>
-      </div>
-
-      {/* What everyone gets when the host ends the room. */}
-      <div className="absolute -top-11 right-2 flex rotate-2 items-center gap-2.5 rounded-2xl bg-white px-3.5 py-2.5 text-on-surface shadow-2xl xl:-right-6">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-tertiary-fixed text-on-tertiary-fixed">
-          <FileText className="h-[18px] w-[18px]" />
-        </span>
-        <span>
-          <span className="block text-xs font-bold">Room report</span>
-          <span className="block text-[11px] text-on-surface-variant">Highlights · tips · topics</span>
-        </span>
       </div>
     </div>
   );
 }
 
-function ControlDot({ className, children }: { className?: string; children: React.ReactNode }) {
-  return (
-    <span className={cn("grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white", className)}>
-      {children}
-    </span>
-  );
-}
-
 function Equalizer() {
   return (
-    <span className="flex h-3 items-end gap-[2px]">
-      {[0, 1, 2].map((i) => (
+    <span className="mt-1 flex h-3 items-center gap-0.5">
+      {["bg-purple", "bg-ink", "bg-purple", "bg-coral", "bg-ink"].map((color, i) => (
         <span
           key={i}
-          className="h-full w-[3px] origin-bottom rounded-full bg-emerald-400 motion-safe:animate-eq"
-          style={{ animationDelay: `${i * 150}ms` }}
+          className={cn("h-full w-1 origin-center rounded-full motion-safe:animate-eq", color)}
+          style={{ animationDelay: `${i * 120}ms` }}
         />
       ))}
     </span>

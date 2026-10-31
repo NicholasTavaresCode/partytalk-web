@@ -97,6 +97,8 @@ export interface RoomState {
    */
   presence: Record<string, string | undefined>;
   ended: boolean;
+  /** The owner revoked this user's invite; the server already dropped them from the room. */
+  removed: boolean;
   /** undefined = not ended; null = ended without a report (the AI failed). */
   endedReport: RoomReport | null | undefined;
   error: string | null;
@@ -108,6 +110,7 @@ export const initialRoomState: RoomState = {
   hostMessages: [],
   presence: {},
   ended: false,
+  removed: false,
   endedReport: undefined,
   error: null,
 };
@@ -119,6 +122,9 @@ export type RoomAction =
   | { type: "transcript"; segment: TranscriptSegment }
   | { type: "hostMessage"; message: HostMessage }
   | { type: "presence"; event: PresenceEvent }
+  /** Everyone connected when we (re)joined: replaces what we knew. */
+  | { type: "roster"; members: { uid: string; name?: string }[] }
+  | { type: "removed" }
   | { type: "sessionEnded"; event: SessionEndedEvent }
   | { type: "error"; message: string | null };
 
@@ -144,6 +150,10 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
       }
       return { ...state, presence: { ...state.presence, [uid]: name ?? state.presence[uid] } };
     }
+    case "roster":
+      return { ...state, presence: Object.fromEntries(action.members.map((m) => [m.uid, m.name])) };
+    case "removed":
+      return { ...state, removed: true };
     case "sessionEnded":
       return { ...state, ended: true, endedReport: action.event.report ?? null };
     case "error":

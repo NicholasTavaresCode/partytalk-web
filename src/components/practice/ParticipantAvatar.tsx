@@ -36,14 +36,14 @@ export function ParticipantAvatar({
 }: AvatarProps) {
   const h = hue(name);
   const background = isAI
-    ? "linear-gradient(135deg, #003366 0%, #1f477b 60%, #c9a900 140%)"
+    ? "linear-gradient(135deg, #7924ff 0%, #5a12d6 70%, #d2e823 150%)"
     : `linear-gradient(135deg, hsl(${h} 62% 42%), hsl(${(h + 40) % 360} 66% 55%))`;
 
   return (
     <span
       className={cn(
         "relative inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white",
-        speaking && "ring-2 ring-emerald-400 ring-offset-2 ring-offset-white",
+        speaking && "ring-2 ring-lime ring-offset-2 ring-offset-white",
         className,
       )}
       style={{ width: size, height: size, background, fontSize: size * 0.36 }}

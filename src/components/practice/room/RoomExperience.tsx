@@ -18,6 +18,7 @@ import {
   Users,
   Sparkles,
   Timer,
+  UserPlus,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/apiClient";
@@ -34,6 +35,9 @@ import { Logo } from "@/components/brand/Logo";
 import { ParticipantAvatar } from "@/components/practice/ParticipantAvatar";
 import { LoadingScreen } from "@/components/app/LoadingScreen";
 import { VoiceBars } from "@/components/practice/room/VoiceBars";
+import { RoomQuestSummary } from "@/components/quests/RoomQuestSummary";
+import { InvitePanel } from "./InvitePanel";
+import { RoomAccessScreen } from "./RoomAccessScreen";
 import { cn } from "@/lib/cn";
 import type { HostMessage, HostMessageTrigger, RoomReport } from "@/lib/types";
 
@@ -48,23 +52,56 @@ const TRIGGER: Record<HostMessageTrigger, string> = {
 const clock = (iso: string) =>
   new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-export function RoomExperience({ roomId }: { roomId: string }) {
+/**
+ * The live room. Rooms are invite-only: the API answers 403 until the signed-in
+ * account is invited, so `inviteCode` (from an owner's invite link) is redeemed
+ * by joining; without one the visitor gets the "invite-only" screen.
+ */
+export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteCode?: string }) {
+  const router = useRouter();
   const { user } = useAuth();
   const { data: me } = useMe();
-  const { data: room, isLoading } = useRoom(roomId);
-  const { join, start, end, changeTopic } = useRoomLifecycle(roomId);
+  const { data: room, isLoading, error: roomError } = useRoom(roomId);
+  const { join, leave, start, end, changeTopic } = useRoomLifecycle(roomId);
+  const roomErrorStatus = roomError instanceof ApiError ? roomError.status : undefined;
   // Only open the socket once we're actually in the room (see useRoomSocket).
   const isParticipant = !!room && !!user && room.participantIds.includes(user.uid);
   const rt = useRoomSocket(roomId, { enabled: isParticipant });
   const live = room?.status === "live";
 
   const [hostMuted, setHostMuted] = useState(false);
+  const [invitesOpen, setInvitesOpen] = useState(false);
   // The mic can be on before the room starts (like Meet's lobby); words only go
   // out once the session is live and the host is listening.
   const stt = useSpeechRecognition((text) => {
     if (live) rt.sendTranscript(text);
   });
-  const voice = useVoiceMesh({ socket: rt.socket, roomId, enabled: live });
+  // One mic button drives both what the AI hears (speech-to-text) and what the
+  // others hear (the voice mesh). Without speech-to-text (e.g. Firefox) it still
+  // mutes and unmutes your voice; the AI just can't hear you.
+  const [micOnNoStt, setMicOnNoStt] = useState(false);
+  const micOn = stt.supported ? stt.listening : micOnNoStt;
+  const toggleMic = () => {
+    if (stt.supported) {
+      if (stt.listening) stt.stop();
+      else stt.start();
+    } else {
+      setMicOnNoStt((on) => !on);
+    }
+  };
+  const voice = useVoiceMesh({
+    socket: rt.socket,
+    roomId,
+    enabled: live && isParticipant && !rt.removed,
+    selfUid: user?.uid,
+    muted: !micOn,
+  });
+
+  // Revoked mid-session: stop listening right away (the server already ignores us).
+  useEffect(() => {
+    if (rt.removed) stt.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `stt` is a fresh object each render
+  }, [rt.removed]);
   const hostVoice = useHostVoice(rt.hostMessages, hostMuted);
   const recent = useRecentSpeakers(rt.segments);
   const qc = useQueryClient();
@@ -135,7 +172,7 @@ export function RoomExperience({ roomId }: { roomId: string }) {
   const topic = currentTopic(rt.hostMessages, room.topic);
 
   return (
-    <div className="flex h-screen flex-col bg-[#202124] text-white">
+    <div className="flex h-screen flex-col bg-stage text-white">
       {/* Stage */}
       <main className="relative flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4">
         {/* The host is not a participant: it sits above the room, listening, and
@@ -164,8 +201,8 @@ export function RoomExperience({ roomId }: { roomId: string }) {
                   key={uid}
                   name={selfName}
                   owner={uid === room.ownerId}
-                  stream={stt.listening ? voice.localStream : null}
-                  micOn={stt.listening}
+                  stream={micOn ? voice.localStream : null}
+                  micOn={micOn}
                 />
               ) : (
                 <PeerTile
@@ -181,16 +218,18 @@ export function RoomExperience({ roomId }: { roomId: string }) {
           </div>
         </div>
 
+        {isOwner && invitesOpen && <InvitePanel room={room} onClose={() => setInvitesOpen(false)} />}
+
         {start.isError && !(start.error instanceof ApiError && start.error.status === 409) ? (
-          <p className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[#ea4335] px-4 py-2 text-sm">
+          <p className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-secondary px-4 py-2 text-sm">
             Couldn&apos;t start: {start.error.message}
           </p>
         ) : rt.error ? (
-          <p className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[#ea4335] px-4 py-2 text-sm">
+          <p className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-secondary px-4 py-2 text-sm">
             {rt.error}
           </p>
         ) : isParticipant && !rt.connected ? (
-          <p className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[#3c4043] px-4 py-2 text-sm text-white/80">
+          <p className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-stage-tile px-4 py-2 text-sm text-white/80">
             Connecting to the room…
           </p>
         ) : null}
@@ -213,27 +252,23 @@ export function RoomExperience({ roomId }: { roomId: string }) {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          {stt.supported ? (
-            <CtrlButton
-              title={
-                stt.listening
-                  ? "Turn off microphone"
+          <CtrlButton
+            title={
+              micOn
+                ? "Turn off microphone"
+                : !stt.supported
+                  ? "Turn on microphone (this browser has no speech-to-text, so the AI host can't hear you — use Chrome or Edge)"
                   : !live
                     ? "Turn on microphone (the AI host starts listening when the room starts)"
                     : !rt.connected
                       ? "Turn on microphone (reconnecting to the room…)"
                       : "Turn on microphone"
-              }
-              off={!stt.listening}
-              onClick={() => (stt.listening ? stt.stop() : stt.start())}
-            >
-              {stt.listening ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
-            </CtrlButton>
-          ) : (
-            <CtrlButton title="Speech-to-text isn't available in this browser — use Chrome or Edge" off disabled>
-              <MicOff className="h-5 w-5" />
-            </CtrlButton>
-          )}
+            }
+            off={!micOn}
+            onClick={toggleMic}
+          >
+            {micOn ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+          </CtrlButton>
 
           <CtrlButton
             title={
@@ -250,7 +285,7 @@ export function RoomExperience({ roomId }: { roomId: string }) {
             {hostMuted || !hostVoice.supported ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
           </CtrlButton>
 
-          {live && (
+          {isOwner && live && (
             <CtrlButton
               title="Change topic"
               disabled={changeTopic.isPending}
@@ -270,7 +305,7 @@ export function RoomExperience({ roomId }: { roomId: string }) {
             <button
               onClick={() => start.mutate()}
               disabled={start.isPending}
-              className="inline-flex h-12 items-center gap-2 rounded-full bg-[#8ab4f8] px-5 font-medium text-[#202124] hover:bg-[#a8c7fa] disabled:opacity-60"
+              className="inline-flex h-12 items-center gap-2 rounded-full bg-lime px-5 font-medium text-ink hover:bg-lime-light disabled:opacity-60"
             >
               <Play className="h-5 w-5" /> {start.isPending ? "Starting…" : "Start"}
             </button>
@@ -281,23 +316,40 @@ export function RoomExperience({ roomId }: { roomId: string }) {
               onClick={() => end.mutate()}
               disabled={end.isPending}
               title="End for everyone"
-              className="inline-flex h-12 items-center gap-2 rounded-full bg-[#ea4335] px-5 font-medium text-white hover:bg-[#f28b82] disabled:opacity-60"
+              className="inline-flex h-12 items-center gap-2 rounded-full bg-secondary px-5 font-medium text-white hover:bg-secondary-container disabled:opacity-60"
             >
               <PhoneOff className="h-5 w-5" /> {end.isPending ? "Ending…" : "End"}
             </button>
           ) : (
-            <Link
-              href="/practice"
+            // Leaving gives the seat back (rooms cap at 5), then goes — even if the call fails.
+            <button
+              onClick={() => leave.mutate(undefined, { onSettled: () => router.push("/practice") })}
+              disabled={leave.isPending}
               title="Leave"
               aria-label="Leave"
-              className="grid h-12 w-16 place-items-center rounded-full bg-[#ea4335] text-white transition-colors hover:bg-[#f28b82]"
+              className="grid h-12 w-16 place-items-center rounded-full bg-secondary text-white transition-colors hover:bg-secondary-container disabled:opacity-60"
             >
-              <PhoneOff className="h-5 w-5" />
-            </Link>
+              {leave.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <PhoneOff className="h-5 w-5" />}
+            </button>
           )}
         </div>
 
-        <div className="flex items-center justify-end">
+        <div className="flex items-center justify-end gap-1">
+          {isOwner && (
+            <button
+              onClick={() => setInvitesOpen((v) => !v)}
+              aria-expanded={invitesOpen}
+              title={room.status === "waiting" ? "Who can join" : "Guest list (locked once the room starts)"}
+              className={cn(
+                "inline-flex h-10 items-center gap-1.5 rounded-full px-3 text-sm transition-colors",
+                invitesOpen ? "bg-lime text-ink" : "text-white/80 hover:bg-stage-hover",
+              )}
+            >
+              <UserPlus className="h-5 w-5" />
+              <span className="hidden sm:inline">{room.status === "waiting" ? "Invite" : "Guests"}</span>
+              {!!room.invitedEmails?.length && <span className="opacity-70">{room.invitedEmails.length}</span>}
+            </button>
+          )}
           <span
             title={`${room.participantIds.length} of ${room.maxParticipants} people`}
             className="inline-flex h-10 items-center gap-1.5 rounded-full px-3 text-sm text-white/80"
@@ -346,8 +398,8 @@ function Tile({
   return (
     <div
       className={cn(
-        "relative flex min-h-[9rem] items-center justify-center overflow-hidden rounded-xl bg-[#3c4043] transition-shadow duration-150",
-        speaking ? "shadow-[inset_0_0_0_3px_#8ab4f8]" : "shadow-none",
+        "relative flex min-h-[9rem] items-center justify-center overflow-hidden rounded-xl bg-stage-tile transition-shadow duration-150",
+        speaking ? "shadow-[inset_0_0_0_3px_#d2e823]" : "shadow-none",
         !online && "opacity-50",
       )}
     >
@@ -359,14 +411,14 @@ function Tile({
 
       <div className="absolute bottom-2.5 left-3 flex items-center gap-1.5 text-sm font-medium [text-shadow:0_1px_2px_rgba(0,0,0,0.7)]">
         <span className="max-w-[12rem] truncate">{name}</span>
-        {owner && <Crown className="h-3.5 w-3.5 text-[#fdd663]" />}
+        {owner && <Crown className="h-3.5 w-3.5 text-lime" />}
       </div>
 
       <div className="absolute right-2.5 top-2.5">
         {speaking ? (
           <VoiceBars level={level} />
         ) : status === "mic-off" ? (
-          <span className="grid h-7 w-7 place-items-center rounded-full bg-[#ea4335]/90" title="Microphone off">
+          <span className="grid h-7 w-7 place-items-center rounded-full bg-secondary/90" title="Microphone off">
             <MicOff className="h-3.5 w-3.5" />
           </span>
         ) : null}
@@ -472,17 +524,17 @@ function HostBar({
     <section
       aria-label="AI host"
       className={cn(
-        "mx-auto w-full max-w-3xl shrink-0 rounded-2xl bg-[#303134] px-4 py-3 transition-shadow duration-200",
-        speaking && "shadow-[0_0_0_2px_#8ab4f8]",
+        "mx-auto w-full max-w-3xl shrink-0 rounded-2xl bg-stage-raised px-4 py-3 transition-shadow duration-200",
+        speaking && "shadow-[0_0_0_2px_#d2e823]",
       )}
     >
       <div className="flex items-start gap-3">
-        <ParticipantAvatar name={HOST_NAME} isAI size={40} speaking={speaking} className="ring-offset-[#303134]" />
+        <ParticipantAvatar name={HOST_NAME} isAI size={40} speaking={speaking} className="ring-offset-stage-raised" />
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/60">
             <span className="inline-flex items-center gap-1 font-medium text-white">
-              <Sparkles className="h-3.5 w-3.5 text-[#fdd663]" /> {HOST_NAME}
+              <Sparkles className="h-3.5 w-3.5 text-lime" /> {HOST_NAME}
             </span>
             <span>· {status}</span>
             {speaking && <VoiceBars size={16} />}
@@ -503,7 +555,7 @@ function HostBar({
                 {topic}
               </span>
               {openingPickedByHost && topic === openingTopic && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-[#fdd663]/15 px-2 py-0.5 text-[11px] font-medium text-[#fdd663]">
+                <span className="inline-flex items-center gap-1 rounded-full bg-lime/15 px-2 py-0.5 text-[11px] font-medium text-lime">
                   <Sparkles className="h-3 w-3" /> picked by the host
                 </span>
               )}
@@ -517,7 +569,7 @@ function HostBar({
 
           {/* Details — only a host message carries them (the opening topic has none). */}
           {latest ? (
-            <div key={latest.id} className="animate-fade-up mt-2 border-l-2 border-[#8ab4f8]/60 pl-3">
+            <div key={latest.id} className="animate-fade-up mt-2 border-l-2 border-lime/60 pl-3">
               <p className="text-sm leading-snug text-white/90">“{latest.message}”</p>
               <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/60">
                 <span className="rounded-full bg-white/10 px-2 py-0.5 text-white/80">{TRIGGER[latest.trigger]}</span>
@@ -537,7 +589,7 @@ function HostBar({
           {earlier.length > 0 && (
             <button
               onClick={() => setShowEarlier((v) => !v)}
-              className="mt-2 text-xs font-medium text-[#8ab4f8] hover:underline"
+              className="mt-2 text-xs font-medium text-lime hover:underline"
             >
               {showEarlier ? "Hide earlier topics" : `Earlier topics (${earlier.length})`}
             </button>
@@ -588,10 +640,10 @@ function CtrlButton({
       className={cn(
         "grid h-12 w-12 place-items-center rounded-full transition-colors disabled:opacity-40",
         off
-          ? "bg-[#ea4335] text-white hover:bg-[#f28b82]"
+          ? "bg-secondary text-white hover:bg-secondary-container"
           : active
-            ? "bg-[#8ab4f8] text-[#202124] hover:bg-[#a8c7fa]"
-            : "bg-[#3c4043] text-white hover:bg-[#4a4d51]",
+            ? "bg-lime text-ink hover:bg-lime-light"
+            : "bg-stage-tile text-white hover:bg-stage-hover",
       )}
     >
       {children}
@@ -604,7 +656,7 @@ function Countdown({ ms }: { ms: number }) {
   return (
     <span
       title="Time left in this session"
-      className={cn("inline-flex items-center gap-1.5 tabular-nums", ms <= 60_000 && "text-[#f28b82]")}
+      className={cn("inline-flex items-center gap-1.5 tabular-nums", ms <= 60_000 && "text-coral")}
     >
       <Timer className="h-4 w-4" />
       {ms === 0 ? "Ending…" : `${formatCountdown(ms)} left`}
@@ -636,14 +688,14 @@ function ReportView({
 }) {
   return (
     <div className="min-h-screen bg-surface">
-      <header className="flex h-14 items-center justify-between border-b border-outline-variant bg-white px-4">
+      <header className="flex h-14 items-center justify-between border-b border-ink/10 bg-cream/90 px-4 backdrop-blur-md">
         <div className="flex items-center gap-3">
           <Logo className="h-7 w-7" />
-          <span className="text-sm font-bold text-on-surface">Session report</span>
+          <span className="font-display text-sm font-bold text-ink">Session report</span>
         </div>
         <Link
           href="/practice"
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-semibold text-on-primary hover:opacity-90"
+          className="inline-flex h-9 items-center gap-1.5 rounded-pill border-2 border-ink bg-ink px-4 font-display text-sm font-bold text-cream shadow-pop-sm transition-all hover:translate-x-px hover:translate-y-px hover:shadow-none"
         >
           Back to rooms
         </Link>
@@ -653,43 +705,44 @@ function ReportView({
         <p className="text-label-caps font-label-caps uppercase text-on-surface-variant">
           Room · {topic}
         </p>
-        <h1 className="mt-2 font-display text-3xl font-extrabold tracking-tight text-primary">
-          How the session went
+        <h1 className="mt-2 font-display text-4xl font-extrabold tracking-tight text-ink">
+          How the session{" "}
+          <span className="inline-block -rotate-1 rounded-xl border-2 border-ink bg-lime px-2 shadow-pop-sm">went.</span>
         </h1>
 
         {!report ? (
-          <p className="mt-6 rounded-2xl border border-outline-variant bg-white p-6 text-on-surface-variant">
+          <p className="mt-6 rounded-2xl border-2 border-ink bg-white p-6 text-on-surface-variant shadow-pop">
             The session ended, but no report was generated (the AI may have been unavailable). Room
             id: <code className="rounded bg-surface-container px-1">{roomId}</code>
           </p>
         ) : (
           <div className="mt-6 space-y-6">
-            <div className="rounded-2xl bg-primary p-6 text-on-primary">
-              <p className="text-sm font-bold uppercase tracking-wide text-tertiary-fixed">Summary</p>
+            <div className="rounded-3xl border-2 border-ink bg-ink p-6 text-cream shadow-pop-lg">
+              <p className="font-label text-sm font-bold uppercase tracking-wider text-lime">Summary</p>
               <p className="mt-2 text-lg leading-relaxed">{report.summary}</p>
             </div>
 
             <ReportList
-              icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}
+              icon={<CheckCircle2 className="h-5 w-5 text-purple" />}
               title="Highlights"
               items={report.highlights}
-              tone="emerald"
+              tone="purple"
             />
             <ReportList
               icon={<Lightbulb className="h-5 w-5 text-tertiary" />}
               title="Suggestions for next time"
               items={report.suggestions}
-              tone="gold"
+              tone="lime"
             />
 
             {report.topicsExplored.length > 0 && (
               <div>
-                <h2 className="mb-3 text-lg font-bold text-on-surface">Topics you explored</h2>
+                <h2 className="mb-3 font-display text-lg font-bold text-ink">Topics you explored</h2>
                 <div className="flex flex-wrap gap-2">
                   {report.topicsExplored.map((t) => (
                     <span
                       key={t}
-                      className="rounded-pill border border-outline-variant bg-white px-3 py-1.5 text-sm font-medium text-on-surface-variant"
+                      className="rounded-pill border-2 border-ink bg-white px-3 py-1.5 font-display text-sm font-bold text-ink shadow-pop-sm"
                     >
                       {t}
                     </span>
@@ -699,6 +752,8 @@ function ReportView({
             )}
           </div>
         )}
+
+        <RoomQuestSummary roomId={roomId} />
       </div>
     </div>
   );
@@ -713,21 +768,19 @@ function ReportList({
   icon: React.ReactNode;
   title: string;
   items: string[];
-  tone: "emerald" | "gold";
+  tone: "purple" | "lime";
 }) {
   if (items.length === 0) return null;
   return (
     <div>
-      <h2 className="mb-3 text-lg font-bold text-on-surface">{title}</h2>
+      <h2 className="mb-3 font-display text-lg font-bold text-ink">{title}</h2>
       <ul className="space-y-2">
         {items.map((item, i) => (
           <li
             key={i}
             className={cn(
-              "flex items-start gap-3 rounded-2xl border p-4",
-              tone === "emerald"
-                ? "border-emerald-200 bg-emerald-50/50"
-                : "border-tertiary-fixed-dim/60 bg-tertiary-fixed/15",
+              "flex items-start gap-3 rounded-2xl border-2 p-4",
+              tone === "purple" ? "border-purple/30 bg-purple-light/50" : "border-lime-dim bg-lime/20",
             )}
           >
             <span className="mt-0.5 shrink-0">{icon}</span>

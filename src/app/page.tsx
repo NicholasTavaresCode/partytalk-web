@@ -1,41 +1,32 @@
 import type { Metadata } from "next";
-import { ArrowRight, Sparkles, Users, MessageSquareText, Mic, Globe, Check } from "lucide-react";
-import { SiteLayout } from "@/components/site/SiteLayout";
-import { Container } from "@/components/ui/Container";
-import { Button } from "@/components/ui/Button";
-import { Container } from "@/components/ui/Container";
+import Link from "next/link";
+import { Wordmark } from "@/components/brand/Wordmark";
 import { LandingAuthLink } from "@/components/marketing/LandingAuthLink";
 import { RoomPreview } from "@/components/marketing/RoomPreview";
-import { IELTS_ENABLED } from "@/lib/features";
+import { LandingSignInButton } from "@/components/marketing/LandingSignInButton";
+import { cn } from "@/lib/cn";
 
 export const metadata: Metadata = {
   description:
-    "Join small live rooms to practise English out loud with learners around the world, guided by a friendly AI host.",
+    "Open a small voice room with your group and practise English out loud. An AI host listens in, throws in an unexpected new topic when one runs dry, and writes everyone a report at the end.",
 };
 
+/** How a room goes, as the hero card's three chips. */
 const STEPS = [
-  { icon: UserPlus, title: "Invite your group", body: "Up to 4 friends or classmates" },
-  { icon: Mic, title: "Talk by voice", body: "The AI host keeps topics coming" },
-  { icon: FileText, title: "Get your report", body: "Highlights and tips at the end" },
+  { emoji: "✉️", title: "Invite your group", cls: "border border-ink/10 bg-surface-container text-on-surface" },
+  { emoji: "🎙️", title: "Talk by voice", cls: "border-2 border-ink bg-lime text-ink shadow-pop-sm" },
+  { emoji: "📊", title: "Get your report", cls: "border border-secondary/60 bg-coral/15 text-secondary" },
 ];
 
-const FEATURES = [
-  {
-    icon: Mic,
-    title: "Speak from day one",
-    body: "Confidence comes from talking. PartyTalk gets you speaking in your first minute, not your tenth lesson.",
-  },
-  {
-    icon: Sparkles,
-    title: "Gentle, instant feedback",
-    body: "The AI host nudges grammar and pronunciation in the moment — never interrupting the flow of a real chat.",
-  },
-  {
-    icon: Globe,
-    title: "Learners worldwide",
-    body: "Practise with people from dozens of countries and hear English the way it's really spoken.",
-  },
+const PILLS = [
+  { emoji: "🎙️", label: "Real voices, small rooms", cls: "border-ink/10 bg-surface-container text-on-surface" },
+  { emoji: "🤖", label: "AI host changes the topic", cls: "border-ink bg-lime/40 text-ink" },
+  { emoji: "📊", label: "Report for the whole group", cls: "border-purple/30 bg-purple-light text-purple" },
+  { emoji: "🔒", label: "Invite-only", cls: "border-secondary/60 bg-coral/15 text-secondary" },
 ];
+
+/** Staggered entrance for the hero's pieces. */
+const enter = (i: number) => ({ animationDelay: `${i * 80}ms` });
 
 /**
  * The landing page is one screen: what PartyTalk is for, one way in, and a
@@ -43,132 +34,111 @@ const FEATURES = [
  */
 export default function HomePage() {
   return (
-    <div className="relative isolate flex min-h-[100dvh] flex-col overflow-hidden bg-primary text-white">
-      {/* Background: slow-drifting glows over a faint dot texture. */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute -left-40 -top-40 h-[36rem] w-[36rem] rounded-full bg-primary-container blur-3xl motion-safe:animate-aurora" />
-        <div
-          className="absolute -right-32 top-1/4 h-[32rem] w-[32rem] rounded-full bg-on-primary-fixed-variant/60 blur-3xl motion-safe:animate-aurora"
-          style={{ animationDelay: "-7s" }}
-        />
-        <div
-          className="absolute -bottom-48 left-1/3 h-[26rem] w-[26rem] rounded-full bg-tertiary-fixed/10 blur-3xl motion-safe:animate-aurora"
-          style={{ animationDelay: "-13s" }}
-        />
-        <div className="bg-dots absolute inset-0" />
-      </div>
+    <div className="flex min-h-[100dvh] flex-col bg-cream text-ink">
+      <header className="z-30 flex h-16 shrink-0 items-center justify-between border-b border-ink/5 bg-cream/90 px-6 backdrop-blur-md lg:px-10">
+        <Link href="/" aria-label="PartyTalk" className="flex items-center gap-2 rounded-pill">
+          <Wordmark logoClassName="h-10 w-10" textClassName="text-2xl" />
+          <span className="hidden rounded-pill bg-purple px-2.5 py-0.5 font-label text-[11px] font-bold uppercase tracking-wider text-white sm:inline-flex">
+            Voice rooms
+          </span>
+        </Link>
+        <LandingAuthLink />
+      </header>
 
-        <Container className="relative grid gap-12 py-16 lg:grid-cols-2 lg:items-center lg:py-24">
-          <div className="animate-fade-up">
-            <span className="inline-flex items-center gap-2 rounded-pill border border-outline-variant bg-white px-3.5 py-1.5 text-sm font-medium text-on-surface-variant shadow-sm">
-              <Sparkles className="h-4 w-4 text-primary" />
-              AI-guided group conversation
-            </span>
-            <h1 className="mt-5 font-display text-4xl font-extrabold leading-[1.05] tracking-tight text-primary sm:text-5xl lg:text-6xl">
-              Speak English with the world&nbsp;— not at a screen.
-            </h1>
-            <p className="mt-5 max-w-xl text-lg leading-relaxed text-on-surface-variant">
-              PartyTalk drops you into small live rooms with other learners and a friendly AI host
-              that keeps things flowing, corrects gently, and helps you find the words.
-            </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Button href="/practice" size="lg">
-                Start a group room
-                <ArrowRight className="h-5 w-5" />
-              </Button>
+      <main className="relative isolate mx-auto flex w-full max-w-[1360px] flex-1 flex-col justify-center px-6 py-10 lg:px-10 lg:py-6 short:py-4">
+        <div aria-hidden className="bg-dots pointer-events-none absolute inset-0 -z-10" />
+
+        <div className="grid items-center gap-14 lg:grid-cols-12 lg:gap-10 xl:gap-14">
+          <div className="space-y-5 lg:col-span-6 short:space-y-3.5">
+            <div className="flex flex-wrap items-center gap-2 motion-safe:animate-fade-up" style={enter(0)}>
+              <span className="inline-flex items-center gap-2 rounded-pill border-2 border-ink bg-white px-3.5 py-1 font-display text-xs font-bold shadow-pop-sm">
+                🔥 English practice that keeps you on your toes
+              </span>
+              <span className="inline-flex rotate-1 items-center rounded-pill bg-coral px-2.5 py-1 font-label text-[11px] font-bold uppercase tracking-wider text-ink">
+                No textbook
+              </span>
             </div>
 
-      <Container className="grid flex-1 items-center gap-16 py-8 short:py-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)] lg:py-6 xl:gap-24">
-        <div>
-          <p
-            className="inline-flex items-center gap-2 rounded-pill bg-white/10 px-3.5 py-1.5 text-sm font-medium text-white/85 ring-1 ring-white/15 motion-safe:animate-fade-up short:hidden sm:short:inline-flex"
-            style={enter(0)}
-          >
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inset-0 rounded-full bg-emerald-400 motion-safe:animate-ping" />
-              <span className="relative h-2 w-2 rounded-full bg-emerald-400" />
-            </span>
-            Live voice rooms with an AI host
-          </p>
+            <div className="space-y-3 motion-safe:animate-fade-up" style={enter(1)}>
+              <h1 className="font-display text-[2.6rem] font-extrabold leading-[1.04] tracking-tight sm:text-5xl lg:text-[3.1rem] xl:text-[3.3rem] short:text-[2.5rem] lg:short:text-[2.9rem]">
+                Fluency happens when things get{" "}
+                <span className="relative inline-block -rotate-[1.5deg] rounded-xl border-2 border-ink bg-lime px-2 shadow-pop-sm">
+                  spicy.
+                </span>
+              </h1>
+              <p className="max-w-xl text-base font-medium leading-relaxed text-on-surface-variant lg:text-[17px]">
+                Open a small voice room with your group and just talk. An AI host listens in and,
+                when a topic runs dry, throws in a completely different one, so you learn to think
+                on your feet in English. Everyone gets a report when the room ends.
+              </p>
+            </div>
 
-          {/* "Start speaking it." is ~8.4em wide: each size keeps it on one line in its column. */}
-          <h1
-            className="mt-6 font-display text-[2.4rem] font-extrabold leading-[1.04] tracking-tight motion-safe:animate-fade-up short:mt-0 short:text-[2.15rem] sm:short:mt-4 sm:text-6xl lg:text-[3.25rem] xl:text-[3.75rem] lg:short:text-[3rem]"
-            style={enter(1)}
-          >
-            Stop studying English.
-            <span className="block bg-gradient-to-r from-tertiary-fixed to-tertiary-fixed-dim bg-clip-text pb-1 text-transparent">
-              Start speaking it.
-            </span>
-          </h1>
-
-          <p
-            className="mt-6 max-w-xl text-base leading-relaxed text-white/70 motion-safe:animate-fade-up short:mt-4 sm:text-lg sm:short:text-base"
-            style={enter(2)}
-          >
-            Open a small voice room, invite your group and just talk. An AI host listens along,
-            brings in a fresh topic whenever the conversation needs one, and leaves everyone a
-            report at the end.
-          </p>
-
-          <div
-            className="mt-8 flex flex-col gap-3 motion-safe:animate-fade-up short:mt-6 sm:flex-row sm:items-center sm:gap-5"
-            style={enter(3)}
-          >
-            <Button
-              href="/practice"
-              size="lg"
-              variant="gold"
-              className="h-14 rounded-pill px-8 text-lg shadow-[0_10px_40px_-10px_rgba(255,225,109,0.6)]"
+            <div
+              className="space-y-3 rounded-2xl border-2 border-ink bg-white p-4 shadow-pop motion-safe:animate-fade-up"
+              style={enter(2)}
             >
-              Start a room
-              <ArrowRight className="h-5 w-5" />
-            </Button>
-            <span className="text-center text-sm text-white/55 sm:text-left">
-              Sign in with Google · Nothing to install
-            </span>
-          </div>
-          {IELTS_ENABLED && (
-            <Link href="/ielts" className="mt-4 inline-block text-sm font-semibold text-white/70 hover:text-white">
-              Or practise for IELTS on your own →
-            </Link>
-          )}
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-display text-xs font-bold text-on-surface">How a room works</span>
+                <span className="rounded-pill bg-purple-light px-2 py-0.5 font-label text-[11px] font-bold text-purple">
+                  5–60 min sessions
+                </span>
+              </div>
+              <ol className="grid grid-cols-3 gap-2">
+                {STEPS.map((step, i) => (
+                  <li
+                    key={step.title}
+                    className={cn(
+                      "flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center font-display text-xs font-bold sm:flex-row",
+                      step.cls,
+                    )}
+                  >
+                    <span aria-hidden>{step.emoji}</span>
+                    <span>
+                      <span className="sr-only">{i + 1}. </span>
+                      {step.title}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+              <LandingSignInButton />
+            </div>
 
-          <ol
-            className="mt-10 grid grid-cols-3 gap-3 border-t border-white/10 pt-6 motion-safe:animate-fade-up short:mt-6 short:pt-4 sm:gap-6"
-            style={enter(4)}
-          >
-            {STEPS.map((step) => (
-              <li key={step.title} className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:gap-3">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/10 text-tertiary-fixed ring-1 ring-white/10">
-                  <step.icon className="h-[18px] w-[18px]" />
-                </span>
-                <span>
-                  <span className="block text-sm font-semibold">{step.title}</span>
-                  <span className="mt-0.5 block text-xs leading-snug text-white/55 short:hidden sm:short:block">{step.body}</span>
-                </span>
-              </li>
-            ))}
-          </ol>
+            <p
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold text-on-surface-variant motion-safe:animate-fade-up"
+              style={enter(3)}
+            >
+              <span>Nothing to install: your Google account is all you need</span>
+              <span className="rounded-pill border border-ink/10 bg-white px-2.5 py-1 text-ink">
+                Up to 5 people per room
+              </span>
+            </p>
+          </div>
+
+          <div className="motion-safe:animate-fade-up lg:col-span-6" style={enter(2)}>
+            <RoomPreview className="mx-auto max-w-[36rem]" />
+          </div>
         </div>
+      </main>
 
-      {/* --------------------------------- CTA ----------------------------------- */}
-      <section className="bg-surface-container-low py-20">
-        <Container className="text-center">
-          <h2 className="mx-auto max-w-2xl font-display text-3xl font-extrabold tracking-tight text-primary sm:text-4xl">
-            Your next conversation is one click away.
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl text-lg text-on-surface-variant">
-            No downloads, no waiting. Jump into a live room and start speaking English today.
-          </p>
-          <div className="mt-8 flex justify-center">
-            <Button href="/practice" size="lg">
-              Find a room
-              <ArrowRight className="h-5 w-5" />
-            </Button>
-          </div>
-        </Container>
-      </section>
-    </SiteLayout>
+      <footer className="z-20 flex min-h-14 shrink-0 items-center justify-between gap-4 border-t border-ink/10 bg-white px-6 py-2.5 lg:px-10">
+        <ul className="no-scrollbar flex items-center gap-2 overflow-x-auto">
+          {PILLS.map((pill) => (
+            <li
+              key={pill.label}
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill border px-3.5 py-1 font-display text-xs font-bold",
+                pill.cls,
+              )}
+            >
+              <span aria-hidden>{pill.emoji}</span>
+              {pill.label}
+            </li>
+          ))}
+        </ul>
+        <span className="hidden shrink-0 font-label text-xs font-bold text-on-surface-variant md:block">
+          © {new Date().getFullYear()} PartyTalk
+        </span>
+      </footer>
+    </div>
   );
 }

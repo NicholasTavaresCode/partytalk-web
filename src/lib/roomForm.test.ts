@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildCreateRoomInput } from "./roomForm";
 
-const base = { maxParticipants: 4, durationMinutes: 15 as const };
+const base = { maxParticipants: 4, durationMinutes: 15 as const, invitedEmails: ["bo@example.com"] };
 
 describe("buildCreateRoomInput", () => {
   it("sends the trimmed topic when the creator types one", () => {

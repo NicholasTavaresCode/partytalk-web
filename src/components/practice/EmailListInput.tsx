@@ -8,14 +8,16 @@ import { MAX_INVITES, parseEmails } from "@/lib/invites";
 /**
  * State for an EmailListInput, owned by the form so it can `flush()` on submit.
  * `selfEmail` is the signed-in user's address: hosts are always in, so it's never added.
+ * `max` is how many the list may hold (a room's free spots); addresses beyond it
+ * stay in the field with an error, so nothing is dropped silently.
  */
-export function useEmailList(selfEmail?: string) {
+export function useEmailList(selfEmail?: string, max: number = MAX_INVITES) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [emails, setEmails] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
   /** Text in the field that isn't an email — the form must not submit until it's fixed. */
   const [error, setError] = useState<string | null>(null);
-  /** Informational only (the invite cap, the host's own address, a repeat). */
+  /** Informational only (the host's own address, a repeat). */
   const [notice, setNotice] = useState<string | null>(null);
   /** The row to highlight briefly: just added, or already on the list. `at` re-triggers a repeat. */
   const [flash, setFlash] = useState<{ email: string; at: number } | null>(null);
@@ -35,15 +37,21 @@ export function useEmailList(selfEmail?: string) {
     const self = selfEmail?.toLowerCase();
     const fresh = found.filter((e) => e !== self && !emails.includes(e));
     const repeat = found.find((e) => emails.includes(e));
-    const added = fresh.slice(0, Math.max(0, MAX_INVITES - emails.length));
+    const free = Math.max(0, max - emails.length);
+    const added = fresh.slice(0, free);
+    const overflow = fresh.slice(free);
     const next = [...emails, ...added];
     setEmails(next);
-    setDraft(invalid.join(", "));
-    setError(invalid.length ? `Not a valid email: ${invalid.join(", ")}` : null);
+    setDraft([...overflow, ...invalid].join(", "));
+    setError(
+      invalid.length
+        ? `Not a valid email: ${invalid.join(", ")}`
+        : overflow.length
+          ? `No spot left for ${overflow.join(", ")}. You take one seat: pick more people or remove someone.`
+          : null,
+    );
     setNotice(
-      added.length < fresh.length
-        ? `A room can have up to ${MAX_INVITES} invites.`
-        : self && found.includes(self)
+      self && found.includes(self)
           ? "That's you. The host is always in."
           : repeat && !added.length
             ? `${repeat} is already on the list.`
@@ -51,7 +59,7 @@ export function useEmailList(selfEmail?: string) {
     );
     const highlight = added[added.length - 1] ?? repeat;
     if (highlight) setFlash({ email: highlight, at: Date.now() });
-    return invalid.length ? null : next;
+    return invalid.length || overflow.length ? null : next;
   };
 
   return {

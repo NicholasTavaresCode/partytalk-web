@@ -5,6 +5,7 @@ export interface CreateRoomForm {
   hostPicksTopic: boolean;
   maxParticipants: number;
   durationMinutes: RoomDuration;
+  invitedEmails: string[];
 }
 
 /**
@@ -13,9 +14,9 @@ export interface CreateRoomForm {
  * ignores it anyway); without it a non-blank topic is required.
  */
 export function buildCreateRoomInput(form: CreateRoomForm): CreateRoomInput | null {
-  const { maxParticipants, durationMinutes } = form;
-  if (form.hostPicksTopic) return { hostPicksTopic: true, maxParticipants, durationMinutes };
+  const { maxParticipants, durationMinutes, invitedEmails } = form;
+  if (form.hostPicksTopic) return { hostPicksTopic: true, maxParticipants, durationMinutes, invitedEmails };
   const topic = form.topic.trim();
   if (!topic) return null;
-  return { topic, maxParticipants, durationMinutes };
+  return { topic, maxParticipants, durationMinutes, invitedEmails };
 }

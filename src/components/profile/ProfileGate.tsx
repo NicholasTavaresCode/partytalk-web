@@ -1,11 +1,20 @@
 "use client";
 
 import type { ReactNode } from "react";
+import type { User } from "@/lib/types";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { ApiError } from "@/lib/apiClient";
 import { useMe } from "@/lib/queries";
 import { LoadingScreen } from "@/components/app/LoadingScreen";
 import { ProfileOnboarding } from "./ProfileOnboarding";
+
+/**
+ * Onboarded = has a display name. The API fills it from the Google account on
+ * first sign-in, so only accounts without a name are asked for one.
+ */
+export function hasProfile(me: User | null | undefined): boolean {
+  return !!me?.displayName?.trim();
+}
 
 /** Renders children once the signed-in user has a profile; otherwise onboards them. */
 export function ProfileGate({ children }: { children: ReactNode }) {
@@ -50,6 +59,6 @@ export function ProfileGate({ children }: { children: ReactNode }) {
     );
   }
 
-  if (data == null) return <ProfileOnboarding />;
+  if (!hasProfile(data)) return <ProfileOnboarding />;
   return <>{children}</>;
 }

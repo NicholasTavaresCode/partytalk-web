@@ -1,23 +1,28 @@
-import { Arimo, Sora } from "next/font/google";
+import { Bricolage_Grotesque, Plus_Jakarta_Sans, Space_Grotesk } from "next/font/google";
 
 /**
- * Arimo — the Arial-metric sans used for body text and app surfaces.
+ * Plus Jakarta Sans — body text and app surfaces.
  */
-export const arimo = Arimo({
+export const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
-  weight: ["400", "700"],
-  style: ["normal", "italic"],
-  variable: "--font-arimo",
+  variable: "--font-jakarta",
   display: "swap",
 });
 
 /**
- * Sora — a warmer geometric display face used for PartyTalk's marketing and
- * group-practice headlines, giving the social product its own personality.
+ * Bricolage Grotesque — chunky display face for headlines, names and buttons.
  */
-export const sora = Sora({
+export const bricolage = Bricolage_Grotesque({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-sora",
+  variable: "--font-bricolage",
+  display: "swap",
+});
+
+/**
+ * Space Grotesk — small all-caps labels: pills, badges and timers.
+ */
+export const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-space",
   display: "swap",
 });

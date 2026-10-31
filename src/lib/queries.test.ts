@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { replaceRoomInList } from "./queries";
+import { mergeRoom, replaceRoomInList } from "./queries";
 import type { Room } from "./types";
 
 const room = (id: string, status: Room["status"] = "waiting", participantIds = ["u1"]): Room => ({
@@ -14,11 +14,25 @@ const room = (id: string, status: Room["status"] = "waiting", participantIds = [
   updatedAt: "2026-09-13T10:00:00Z",
 });
 
+describe("mergeRoom", () => {
+  it("keeps the owner's invite state when a non-owner view arrives over the socket", () => {
+    const cached = { ...room("r1"), invitedEmails: ["bo@example.com"], inviteCode: "code" };
+    const pushed = room("r1", "live", ["u1", "u2"]);
+    expect(mergeRoom(cached, pushed)).toEqual({ ...pushed, invitedEmails: ["bo@example.com"], inviteCode: "code" });
+  });
+
+  it("lets fields that are present win, including a link turned off", () => {
+    const cached = { ...room("r1"), inviteCode: "code" };
+    expect(mergeRoom(cached, { ...room("r1"), inviteCode: null }).inviteCode).toBeNull();
+    expect(mergeRoom(undefined, room("r1"))).toEqual(room("r1"));
+  });
+});
+
 describe("replaceRoomInList", () => {
-  it("swaps in the updated room where it exists", () => {
+  it("merges the updated room in where it exists", () => {
     const updated = room("r1", "live", ["u1", "u2"]);
     const out = replaceRoomInList([room("r1"), room("r2")], updated);
-    expect(out?.[0]).toBe(updated);
+    expect(out?.[0]).toEqual(updated);
     expect(out?.[1].id).toBe("r2");
   });
 

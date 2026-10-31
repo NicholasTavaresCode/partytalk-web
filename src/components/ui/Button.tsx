@@ -1,23 +1,28 @@
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 
-type Variant = "primary" | "gold" | "outline" | "ghost" | "danger" | "white";
+type Variant = "primary" | "lime" | "purple" | "outline" | "ghost" | "danger" | "white";
 type Size = "sm" | "md" | "lg";
 
 const base =
-  "inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-all active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2";
+  "inline-flex items-center justify-center gap-2 rounded-pill font-display font-bold transition-all disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2";
+
+/** Chunky pill: 2px ink border and a hard `pop` shadow that presses in on hover. */
+const pop =
+  "border-2 border-ink shadow-pop-sm hover:translate-x-px hover:translate-y-px hover:shadow-none active:translate-x-0.5 active:translate-y-0.5";
 
 const variants: Record<Variant, string> = {
-  primary: "bg-primary text-on-primary hover:bg-primary-container shadow-sm",
-  gold: "bg-tertiary-fixed text-on-tertiary-fixed hover:bg-tertiary-fixed-dim",
-  outline: "border border-outline text-on-surface hover:border-primary hover:text-primary",
-  ghost: "text-on-surface-variant hover:bg-surface-container",
-  danger: "bg-secondary text-on-secondary hover:bg-secondary-container",
-  white: "bg-white text-primary hover:bg-white/90 shadow-sm",
+  primary: cn(pop, "bg-ink text-cream"),
+  lime: cn(pop, "bg-lime text-ink hover:bg-lime-light"),
+  purple: cn(pop, "bg-purple text-white"),
+  outline: cn(pop, "bg-white text-ink hover:bg-lime/30"),
+  ghost: "text-on-surface-variant hover:bg-surface-container hover:text-ink",
+  danger: cn(pop, "bg-secondary text-on-secondary"),
+  white: cn(pop, "bg-white text-ink"),
 };
 
 const sizes: Record<Size, string> = {
-  sm: "h-9 px-3.5 text-sm",
+  sm: "h-9 px-4 text-sm",
   md: "h-11 px-5 text-[15px]",
   lg: "h-12 px-6 text-base",
 };

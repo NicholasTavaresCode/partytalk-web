@@ -1,10 +1,12 @@
 import { api } from "@/lib/apiClient";
-import type { CreateRoomInput, HostMessage, Room, TranscriptSegment } from "@/lib/types";
+import type { CreateRoomInput, HostMessage, IceServers, Room, RoomStatus, TranscriptSegment } from "@/lib/types";
 
 const qs = (limit?: number) => (limit ? `?limit=${limit}` : "");
 
 export const roomsApi = {
-  list: (limit?: number) => api.get<Room[]>(`/rooms${qs(limit)}`),
+  /** Rooms you own or are invited to: the open ones, or only `status` (e.g. "ended", most recently ended first). */
+  list: (limit?: number, status?: RoomStatus) =>
+    api.get<Room[]>(`/rooms${qs(limit)}${status ? `${limit ? "&" : "?"}status=${status}` : ""}`),
   get: (id: string) => api.get<Room>(`/rooms/${id}`),
   create: (input: CreateRoomInput) => api.post<Room>("/rooms", input),
   /** `inviteCode` (from an invite link) admits a caller who isn't on the invite list yet. */
@@ -20,6 +22,14 @@ export const roomsApi = {
   /** Oldest first. Default limit 20, max 100. */
   getHostMessages: (id: string, limit?: number) =>
     api.get<HostMessage[]>(`/rooms/${id}/host-messages${qs(limit)}`),
-  /** Asks the host to change topic now; the same message is also broadcast over the socket. */
+  /** Owner only: asks the host to change topic now; the same message is also broadcast over the socket. */
   changeTopic: (id: string) => api.post<HostMessage>(`/rooms/${id}/change-topic`),
+  /** STUN + (when configured) TURN with a short-lived credential; seated participants only. */
+  iceServers: (id: string) => api.get<IceServers>(`/rooms/${id}/ice-servers`),
+  // Owner-only invite management; each returns the room with its full invite state.
+  addInvites: (id: string, emails: string[]) => api.post<Room>(`/rooms/${id}/invites`, { emails }),
+  revokeInvite: (id: string, email: string) =>
+    api.delete<Room>(`/rooms/${id}/invites/${encodeURIComponent(email)}`),
+  createInviteLink: (id: string) => api.post<Room>(`/rooms/${id}/invite-link`),
+  disableInviteLink: (id: string) => api.delete<Room>(`/rooms/${id}/invite-link`),
 };

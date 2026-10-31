@@ -18,7 +18,7 @@
 
   /* Flat, high-contrast focus ring */
   :focus-visible {
-    outline: 2px solid #001e40;
+    outline: 2px solid #7924ff;
     outline-offset: 2px;
   }
 }
@@ -30,14 +30,14 @@
     height: 8px;
   }
   .thin-scroll::-webkit-scrollbar-track {
-    background: #f2f4f5;
+    background: #f4f0e6;
   }
   .thin-scroll::-webkit-scrollbar-thumb {
-    background: #c3c6d1;
+    background: #d9d4c7;
     border-radius: 4px;
   }
   .thin-scroll::-webkit-scrollbar-thumb:hover {
-    background: #737780;
+    background: #78786d;
   }
 }
 
@@ -50,18 +50,10 @@
     display: none;
   }
 
-  /* Subtle grid texture for marketing hero sections */
-  .bg-grid {
-    background-image:
-      linear-gradient(to right, rgba(0, 30, 64, 0.05) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(0, 30, 64, 0.05) 1px, transparent 1px);
-    background-size: 32px 32px;
-  }
-
-  /* Dot texture for the dark landing screen, fading out toward the edges */
+  /* Faint ink dot texture for cream hero sections, fading out toward the edges */
   .bg-dots {
-    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-    background-size: 24px 24px;
-    mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, black 20%, transparent 75%);
+    background-image: radial-gradient(rgba(20, 21, 23, 0.09) 1px, transparent 1px);
+    background-size: 22px 22px;
+    mask-image: radial-gradient(ellipse 75% 65% at 50% 45%, black 25%, transparent 80%);
   }
 }

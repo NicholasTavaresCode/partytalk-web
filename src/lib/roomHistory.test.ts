@@ -109,6 +109,16 @@ describe("other room events", () => {
     expect(left.presence).toEqual({});
   });
 
+  it("replaces presence with the roster sent on (re)join", () => {
+    const stale = reduce([{ type: "presence", event: { roomId: "r1", uid: "gone", name: "Old", event: "joined" } }]);
+    const s = reduce([{ type: "roster", members: [{ uid: "u1", name: "Lucas" }, { uid: "u2" }] }], stale);
+    expect(s.presence).toEqual({ u1: "Lucas", u2: undefined });
+  });
+
+  it("marks the user removed when the owner revokes their invite", () => {
+    expect(reduce([{ type: "removed" }]).removed).toBe(true);
+  });
+
   it("marks the session ended with a null report when the AI produced none", () => {
     const s = reduce([{ type: "sessionEnded", event: { roomId: "r1" } }]);
     expect(s.ended).toBe(true);

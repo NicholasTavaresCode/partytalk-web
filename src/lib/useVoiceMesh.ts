@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { env } from "./env";
+import { roomsApi } from "./api/rooms";
 import type { RoomsSocket } from "./socket";
 
 /** Used only if the API's ICE servers can't be fetched: enough for most home networks. */
@@ -25,6 +25,8 @@ interface Options {
   enabled: boolean;
   /** The signed-in user's uid — breaks offer glare deterministically (see onOffer). */
   selfUid?: string;
+  /** Silence our outgoing audio (the room's mic button) without dropping any connection. */
+  muted: boolean;
 }
 
 /**
@@ -40,9 +42,8 @@ interface Options {
  * deployment has a relay, TURN with a short-lived credential for this user — what
  * lets peers on strict NATs (mobile data, corporate Wi-Fi) still hear each other.
  */
-export function useVoiceMesh({ socket, roomId, enabled, selfUid }: Options) {
+export function useVoiceMesh({ socket, roomId, enabled, selfUid, muted }: Options) {
   const [micStatus, setMicStatus] = useState<Exclude<VoiceStatus, "connected">>("off");
-  const [muted, setMuted] = useState(false);
   const [remoteStreams, setRemoteStreams] = useState<RemoteStream[]>([]);
   /** The local mic stream once acquired (for level metering / speaking indicators). */
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -52,6 +53,11 @@ export function useVoiceMesh({ socket, roomId, enabled, selfUid }: Options) {
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const pendingIceRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const iceServersRef = useRef<RTCIceServer[]>(FALLBACK_ICE_SERVERS);
+  // Read when the mic is acquired, so the new track starts in the right state.
+  const mutedRef = useRef(muted);
+  useEffect(() => {
+    mutedRef.current = muted;
+  }, [muted]);
 
   const addRemote = useCallback((uid: string, stream: MediaStream) => {
     setRemoteStreams((prev) => {
@@ -134,11 +140,12 @@ export function useVoiceMesh({ socket, roomId, enabled, selfUid }: Options) {
           stream.getTracks().forEach((t) => t.stop());
           return;
         }
+        stream.getAudioTracks().forEach((t) => (t.enabled = !mutedRef.current));
         localStreamRef.current = stream;
         setLocalStream(stream);
-        setStatus("ready");
-        // Only announce ourselves when the backend actually relays signaling.
-        if (env.voiceMeshEnabled) socket.emit("webrtc:join", { roomId });
+        setMicStatus("ready");
+        // Not connected yet → onConnect joins once the socket is up.
+        if (socket.connected) join();
       } catch {
         if (active) {
           setMicStatus("mic-denied");
@@ -224,22 +231,17 @@ export function useVoiceMesh({ socket, roomId, enabled, selfUid }: Options) {
       localStreamRef.current = null;
       setLocalStream(null);
       setRemoteStreams([]);
-      setStatus("off");
+      setMicStatus("off");
     };
   }, [enabled, socket, roomId, selfUid, addRemote, removePeer, removeAllPeers]);
 
-  const toggleMute = useCallback(() => {
-    const stream = localStreamRef.current;
-    if (!stream) return;
-    const next = !muted;
-    stream.getAudioTracks().forEach((t) => (t.enabled = !next));
-    setMuted(next);
-  }, [muted]);
+  // Muting disables the track, so peers keep their connection and just hear silence.
+  useEffect(() => {
+    localStream?.getAudioTracks().forEach((t) => (t.enabled = !muted));
+  }, [localStream, muted]);
 
   return {
     status: (micStatus === "ready" && remoteStreams.length > 0 ? "connected" : micStatus) as VoiceStatus,
-    muted,
-    toggleMute,
     localStream,
     remoteStreams,
     peerCount: remoteStreams.length,

@@ -14,8 +14,8 @@ export function Wordmark({ className, onDark, logoClassName, textClassName }: Wo
       <Logo onDark={onDark} className={cn("h-9 w-9 shrink-0", logoClassName)} />
       <span
         className={cn(
-          "font-display text-[19px] font-extrabold leading-none tracking-tight",
-          onDark ? "text-white" : "text-primary",
+          "font-display text-[21px] font-extrabold leading-none tracking-tight",
+          onDark ? "text-white" : "text-ink",
           textClassName,
         )}
       >

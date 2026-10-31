@@ -1,7 +1,7 @@
 import { cn } from "@/lib/cn";
 
 /**
- * Meet-style "someone is talking" chip: three bars in a blue disc. With a
+ * Meet-style "someone is talking" chip: three bars in a lime disc. With a
  * `level` the bars follow the mic; without one they loop a gentle bounce.
  */
 export function VoiceBars({
@@ -22,7 +22,7 @@ export function VoiceBars({
     <span
       role="img"
       aria-label="Speaking"
-      className={cn("grid place-items-center rounded-full bg-[#8ab4f8] text-[#202124]", className)}
+      className={cn("grid place-items-center rounded-full bg-lime text-ink", className)}
       style={{ width: size, height: size }}
     >
       <span className="flex items-center gap-[2px]" style={{ height: size * 0.45 }}>
