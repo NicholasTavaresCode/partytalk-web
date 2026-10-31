@@ -170,23 +170,7 @@ const config: Config = {
           "35%": { opacity: "1", transform: "scale(0.92)" },
           "100%": { opacity: "1", transform: "scale(1)" },
         },
-        // ---- The live room's ambience (all transform/opacity, so it stays cheap during a call) ----
-        // A backdrop glow wandering around its spot.
-        drift: {
-          "0%, 100%": { transform: "translate(0, 0) scale(1)" },
-          "33%": { transform: "translate(8%, -6%) scale(1.12)" },
-          "66%": { transform: "translate(-6%, 7%) scale(0.92)" },
-        },
-        // A bubble floating up the room's edge, fading in and out.
-        rise: {
-          "0%": { transform: "translateY(0)", opacity: "0" },
-          "12%, 82%": { opacity: "1" },
-          "100%": { transform: "translateY(-115vh)", opacity: "0" },
-        },
-        sway: {
-          "0%, 100%": { transform: "translateX(-10px) rotate(-8deg)" },
-          "50%": { transform: "translateX(10px) rotate(8deg)" },
-        },
+        // ---- The live room (all transform/opacity, so it stays cheap during a call) ----
         // Idle avatars breathe a little.
         bob: {
           "0%, 100%": { transform: "translateY(0)" },
@@ -201,6 +185,18 @@ const config: Config = {
           "0%": { opacity: "0", transform: "translateY(10px) scale(0.92)" },
           "60%": { opacity: "1", transform: "translateY(-2px) scale(1.02)" },
           "100%": { opacity: "1", transform: "translateY(0) scale(1)" },
+        },
+        // The host banner's gradient layer (twice its width) sliding to and fro.
+        "gradient-pan": {
+          from: { transform: "translateX(0)" },
+          to: { transform: "translateX(-50%)" },
+        },
+        // The host's badge nods along now and then while it listens.
+        tilt: {
+          "0%, 70%, 100%": { transform: "rotate(0deg)" },
+          "76%": { transform: "rotate(-14deg)" },
+          "84%": { transform: "rotate(9deg)" },
+          "92%": { transform: "rotate(-4deg)" },
         },
         // A light streak across the host banner, then a long rest.
         sheen: {
@@ -225,14 +221,13 @@ const config: Config = {
         eq: "voice-bar 0.8s ease-in-out infinite",
         "topic-in": "topic-in 0.4s ease both",
         "count-pop": "count-pop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both",
-        drift: "drift 24s ease-in-out infinite",
-        rise: "rise 20s linear infinite",
-        sway: "sway 4s ease-in-out infinite",
         bob: "bob 5s ease-in-out infinite",
         ripple: "ripple 1.6s cubic-bezier(0, 0, 0.2, 1) infinite",
         // `backwards`, not `both`: once in, a tile's own transform (lifted while speaking) applies again.
         "pop-in": "pop-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) backwards",
         sheen: "sheen 9s ease-in-out infinite",
+        "gradient-pan": "gradient-pan 14s ease-in-out infinite alternate",
+        tilt: "tilt 5s ease-in-out infinite",
         confetti: "confetti 1.1s cubic-bezier(0.15, 0.7, 0.3, 1) both",
       },
     },

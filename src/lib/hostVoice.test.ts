@@ -1,6 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "./apiClient";
 import {
   FRESH_WINDOW_MS,
+  apiSpeechOutput,
   createHostSpeaker,
   pickHostVoice,
   type SpeechOutput,
@@ -23,9 +25,10 @@ const host = (id: string, offsetMs = 0, message = `Ok. Now let's talk about ${id
 function fakeOutput() {
   const spoken: string[] = [];
   const output: SpeechOutput = {
-    speak: vi.fn((text: string) => {
-      spoken.push(text);
+    speak: vi.fn((m: HostMessage) => {
+      spoken.push(m.message);
     }),
+    prefetch: vi.fn(),
     cancel: vi.fn(),
   };
   return { output, spoken };
@@ -136,5 +139,122 @@ describe("pickHostVoice", () => {
   it("returns null when there is no English voice (or no list yet)", () => {
     expect(pickHostVoice([voice("Google Deutsch", "de-DE", false)])).toBeNull();
     expect(pickHostVoice([])).toBeNull();
+  });
+});
+
+describe("host speaker prefetch", () => {
+  it("loads the upcoming line unless muted", () => {
+    const { output } = fakeOutput();
+    const speaker = make(output);
+    speaker.prefetch(host("h1"));
+    expect(output.prefetch).toHaveBeenCalledTimes(1);
+    speaker.setMuted(true);
+    speaker.prefetch(host("h2"));
+    expect(output.prefetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+/** Stands in for HTMLAudioElement: `play` starts it, `end()` finishes it. */
+class FakeAudio {
+  static all: FakeAudio[] = [];
+  static blockAutoplay = false;
+  onplaying: (() => void) | null = null;
+  onended: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  paused = false;
+  constructor(public src: string) {
+    FakeAudio.all.push(this);
+  }
+  play() {
+    if (FakeAudio.blockAutoplay) return Promise.reject(new Error("NotAllowedError"));
+    this.onplaying?.();
+    return Promise.resolve();
+  }
+  pause() {
+    this.paused = true;
+  }
+  end() {
+    this.onended?.();
+  }
+}
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const handlers = () => ({ onStart: vi.fn(), onEnd: vi.fn() });
+
+describe("apiSpeechOutput", () => {
+  beforeEach(() => {
+    FakeAudio.all = [];
+    FakeAudio.blockAutoplay = false;
+    vi.stubGlobal("Audio", FakeAudio);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  const setup = (fetchAudio = vi.fn(async (id: string) => new Blob([id]))) => {
+    const { output: fallback, spoken } = fakeOutput();
+    const output = apiSpeechOutput(fetchAudio, fallback)!;
+    return { output, fallback, spoken, fetchAudio };
+  };
+
+  it("plays each line's audio from the API, one after another", async () => {
+    const { output, fetchAudio, spoken } = setup();
+    const first = handlers();
+    output.speak(host("h1"), first);
+    output.speak(host("h2"), handlers());
+    await settle();
+
+    expect(fetchAudio).toHaveBeenCalledWith("h1");
+    expect(FakeAudio.all).toHaveLength(1);
+    expect(first.onStart).toHaveBeenCalled();
+
+    FakeAudio.all[0].end();
+    await settle();
+    expect(first.onEnd).toHaveBeenCalled();
+    expect(FakeAudio.all).toHaveLength(2);
+    expect(spoken).toEqual([]);
+  });
+
+  it("fetches a prefetched line only once", async () => {
+    const { output, fetchAudio } = setup();
+    output.prefetch!(host("h1"));
+    output.speak(host("h1"), handlers());
+    await settle();
+    expect(fetchAudio).toHaveBeenCalledTimes(1);
+    expect(FakeAudio.all).toHaveLength(1);
+  });
+
+  it("uses the browser's voice, for good, once the API says it has none", async () => {
+    const fetchAudio = vi.fn(async (): Promise<Blob> => {
+      throw new ApiError(503, "The host voice is off");
+    });
+    const { output, spoken } = setup(fetchAudio);
+    output.speak(host("h1"), handlers());
+    await settle();
+    output.speak(host("h2"), handlers());
+    await settle();
+
+    expect(spoken).toEqual(["Ok. Now let's talk about h1.", "Ok. Now let's talk about h2."]);
+    expect(fetchAudio).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the browser's voice for a line it isn't allowed to autoplay", async () => {
+    FakeAudio.blockAutoplay = true;
+    const { output, spoken } = setup();
+    output.speak(host("h1"), handlers());
+    await settle();
+    expect(spoken).toEqual(["Ok. Now let's talk about h1."]);
+  });
+
+  it("stops the current line and drops the queued ones when cancelled", async () => {
+    const { output, fallback } = setup();
+    output.speak(host("h1"), handlers());
+    output.speak(host("h2"), handlers());
+    await settle();
+
+    output.cancel();
+    await settle();
+
+    expect(FakeAudio.all).toHaveLength(1);
+    expect(FakeAudio.all[0].paused).toBe(true);
+    expect(fallback.cancel).toHaveBeenCalled();
   });
 });

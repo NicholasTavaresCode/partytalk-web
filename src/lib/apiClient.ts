@@ -43,6 +43,20 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
   return (json && "data" in json ? json.data : json) as T;
 }
 
+/** GET a file (e.g. the host's audio): sent as it is, not in the envelope. Errors as for `request`. */
+async function requestBlob(path: string): Promise<Blob> {
+  const token = await getIdToken();
+  const res = await fetch(`${env.apiBaseUrl}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (res.status === 401 && token) expireSession(token);
+  if (!res.ok) {
+    const json = await res.json().catch(() => null);
+    throw new ApiError(res.status, String(json?.message ?? res.statusText), json?.path);
+  }
+  return res.blob();
+}
+
 export const api = {
   get: <T>(path: string) => request<T>("GET", path),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
@@ -50,4 +64,5 @@ export const api = {
   delete: <T>(path: string) => request<T>("DELETE", path),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
   del: <T>(path: string) => request<T>("DELETE", path),
+  blob: (path: string) => requestBlob(path),
 };

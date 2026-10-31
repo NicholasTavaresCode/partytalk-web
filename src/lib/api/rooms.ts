@@ -1,5 +1,12 @@
 import { api } from "@/lib/apiClient";
-import type { CreateRoomInput, HostMessage, IceServers, Room, RoomStatus, TranscriptSegment } from "@/lib/types";
+import type {
+  CreateRoomInput,
+  HostMessage,
+  IceServers,
+  Room,
+  RoomStatus,
+  TranscriptSegment,
+} from "@/lib/types";
 
 const qs = (limit?: number) => (limit ? `?limit=${limit}` : "");
 
@@ -22,6 +29,8 @@ export const roomsApi = {
   /** Oldest first. Default limit 20, max 100. */
   getHostMessages: (id: string, limit?: number) =>
     api.get<HostMessage[]>(`/rooms/${id}/host-messages${qs(limit)}`),
+  /** A host line as MP3 in the host's voice; 503 when the API has no voice (use the browser's then). */
+  hostSpeech: (id: string, messageId: string) => api.blob(`/rooms/${id}/host-messages/${messageId}/speech`),
   /** Owner only: asks the host to change topic now; the same message is also broadcast over the socket. */
   changeTopic: (id: string) => api.post<HostMessage>(`/rooms/${id}/change-topic`),
   /** STUN + (when configured) TURN with a short-lived credential; seated participants only. */

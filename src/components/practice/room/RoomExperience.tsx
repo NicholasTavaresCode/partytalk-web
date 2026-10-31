@@ -36,7 +36,6 @@ import { Logo } from "@/components/brand/Logo";
 import { ParticipantAvatar } from "@/components/practice/ParticipantAvatar";
 import { LoadingScreen } from "@/components/app/LoadingScreen";
 import { VoiceBars } from "@/components/practice/room/VoiceBars";
-import { RoomBackdrop } from "./RoomBackdrop";
 import { TopicBurst } from "./TopicBurst";
 import { RoomQuestSummary } from "@/components/quests/RoomQuestSummary";
 import { InvitePanel } from "./InvitePanel";
@@ -104,7 +103,10 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
   }, [rt.removed]);
   // A new host line is held back for a short countdown; only then does it show and get spoken.
   const reveal = useTopicReveal(rt.hostMessages);
-  const hostVoice = useHostVoice(reveal.visible, hostMuted);
+  const hostVoice = useHostVoice(reveal.visible, hostMuted, {
+    roomId,
+    upcoming: reveal.incoming?.message,
+  });
   const recent = useRecentSpeakers(rt.segments);
   const qc = useQueryClient();
   const remaining = useCountdown(room?.status === "live" ? room.scheduledEndAt : undefined);
@@ -176,7 +178,7 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
 
   return (
     <div className="relative isolate flex h-[100dvh] flex-col bg-cream text-ink">
-      <RoomBackdrop />
+      <div aria-hidden className="bg-dots pointer-events-none absolute inset-0 -z-10" />
 
       {/* Header, like the landing's: the room, its status and clock, and who can join. */}
       <header className="z-30 flex h-16 shrink-0 items-center justify-between gap-3 border-b border-ink/5 bg-cream/90 px-4 backdrop-blur-md sm:px-6">
@@ -446,7 +448,9 @@ function Tile({
     <div
       className={cn(
         "relative flex min-h-[9rem] flex-col items-center justify-center gap-3 rounded-3xl border-2 p-4 transition-all duration-150 motion-safe:animate-pop-in",
-        speaking ? "-translate-y-0.5 border-ink bg-card bg-gradient-to-b from-lime/25 to-lime/25 shadow-pop" : "border-ink/10 bg-card",
+        speaking
+          ? "-translate-y-0.5 border-ink bg-card bg-gradient-to-b from-lime/25 to-lime/25 shadow-pop"
+          : "border-ink/10 bg-card",
         !online && "opacity-60",
       )}
       style={{ animationDelay: `${index * 80}ms` }}
@@ -609,12 +613,15 @@ function HostBanner({
     <section
       aria-label="AI host"
       className={cn(
-        "relative mx-auto w-full max-w-4xl shrink-0 rounded-2xl border-2 border-ink bg-gradient-to-r from-amber-200 via-lime to-lime-light p-3.5 transition-all duration-200",
+        "relative mx-auto w-full max-w-4xl shrink-0 rounded-2xl border-2 border-ink bg-gradient-to-r from-amber-200 via-lime to-lime-light p-3.5 transition-all duration-200 motion-safe:animate-pop-in",
         speaking || incoming ? "-translate-y-0.5 shadow-pop" : "shadow-pop-sm",
       )}
     >
-      {/* Now and then a light streak runs across the banner. */}
-      <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-[14px]">
+      {/* The gradient slowly slides to and fro, and now and then a light streak runs across. Clipped
+          with clip-path, not overflow + border-radius: Chrome lets a moving layer bleed over a rounded
+          overflow clip, which smeared the card's border. */}
+      <span aria-hidden className="pointer-events-none absolute inset-0 [clip-path:inset(0_round_14px)]">
+        <span className="absolute inset-y-0 left-0 w-[200%] bg-[linear-gradient(90deg,#fde68a,#d2e823_30%,#e4f738_55%,#d2e823_78%,#fde68a)] motion-safe:animate-gradient-pan" />
         <span className="absolute inset-y-0 left-0 hidden w-1/4 bg-gradient-to-r from-transparent via-white/50 to-transparent motion-safe:block motion-safe:animate-sheen" />
       </span>
       {celebrate && <TopicBurst key={celebrate} />}
@@ -627,7 +634,23 @@ function HostBanner({
               className="absolute inset-0 rounded-full bg-ink-fixed motion-safe:animate-ping"
             />
           )}
-          <GraduationCap className="relative h-5 w-5" />
+          {speaking && !incoming && (
+            <>
+              <span
+                aria-hidden
+                className="absolute inset-0 rounded-full bg-white motion-safe:animate-ripple"
+              />
+              <span
+                aria-hidden
+                className="absolute inset-0 rounded-full bg-white motion-safe:animate-ripple"
+                style={{ animationDelay: "0.8s" }}
+              />
+            </>
+          )}
+          <span className="absolute inset-0 rounded-full bg-ink-fixed" />
+          <GraduationCap
+            className={cn("relative h-5 w-5", live && !speaking && !incoming && "motion-safe:animate-tilt")}
+          />
         </span>
 
         <div className="min-w-0 flex-1">
@@ -646,6 +669,16 @@ function HostBanner({
                       ? "Listening"
                       : "Starts listening when the room starts"}
             </span>
+            {live &&
+              !incoming &&
+              (speaking ? (
+                // An ink ring keeps the lime disc visible on the lime banner.
+                <span className="rounded-full bg-ink-fixed p-0.5">
+                  <VoiceBars size={18} />
+                </span>
+              ) : (
+                <ListeningDots />
+              ))}
             {muted && (
               <span
                 className="inline-flex items-center gap-1 text-[11px] font-bold text-ink-fixed/70"
@@ -713,6 +746,21 @@ function HostBanner({
         </div>
       </div>
     </section>
+  );
+}
+
+/** Three dots bouncing in turn: the host is listening. */
+function ListeningDots() {
+  return (
+    <span role="img" aria-label="Listening" className="inline-flex items-center gap-[3px]">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="h-1.5 w-1.5 rounded-full bg-ink-fixed/60 motion-safe:animate-typing-dot"
+          style={{ animationDelay: `${i * 0.18}s` }}
+        />
+      ))}
+    </span>
   );
 }
 
