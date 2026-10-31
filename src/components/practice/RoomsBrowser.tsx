@@ -2,22 +2,22 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Info, Mail, Plus, X, Radio, Sparkles, UserPlus } from "lucide-react";
+import { History, Info, Mail, Plus, X, Radio, Sparkles, UserPlus } from "lucide-react";
 import { useCreateRoom, useEndedRooms, useRooms } from "@/lib/queries";
 import { ApiError } from "@/lib/apiClient";
 import { buildCreateRoomInput } from "@/lib/roomForm";
-import { ROOM_DURATIONS, type Room, type RoomDuration, type RoomStatus } from "@/lib/types";
+import { ROOM_DURATIONS, type Room, type RoomDuration } from "@/lib/types";
 import { cn } from "@/lib/cn";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { EmailListInput, useEmailList } from "./EmailListInput";
-import { splitRooms } from "@/lib/roomList";
+import { roomSections, type RoomFilter } from "@/lib/roomList";
 import { InviteCard } from "./InviteCard";
 import { RoomCard } from "./RoomCard";
 
 /** Room sizes the API accepts, the owner included: 2–5 (no solo rooms; 5 is the P2P voice cap). */
 const SEAT_OPTIONS = [2, 3, 4, 5];
 
-const FILTERS: { label: string; value: "all" | RoomStatus }[] = [
+const FILTERS: { label: string; value: RoomFilter }[] = [
   { label: "All", value: "all" },
   { label: "Open", value: "waiting" },
   { label: "Live", value: "live" },
@@ -26,23 +26,24 @@ const FILTERS: { label: string; value: "all" | RoomStatus }[] = [
 
 export function RoomsBrowser() {
   const { user } = useAuth();
-  const [filter, setFilter] = useState<"all" | RoomStatus>("all");
+  const [filter, setFilter] = useState<RoomFilter>("all");
   const [creating, setCreating] = useState(false);
-  // Open rooms poll; past ones load only when asked for (GET /rooms?status=ended).
+  // Open rooms poll; past ones (GET /rooms?status=ended) load for All and Ended.
   const showingEnded = filter === "ended";
+  const wantEnded = filter === "all" || showingEnded;
   const open = useRooms();
-  const past = useEndedRooms(showingEnded);
-  const { data: rooms, isLoading, isError, error } = showingEnded ? past : open;
+  const past = useEndedRooms(wantEnded);
+  const error = open.error ?? (wantEnded ? past.error : null);
 
-  // The filter applies to both groups. Ended rooms have nothing to accept, so no invitations there.
-  const { invites, mine } = useMemo(() => {
-    if (showingEnded) return { invites: [], mine: rooms ?? [] };
-    return splitRooms(
-      (rooms ?? []).filter((r) => filter === "all" || r.status === filter),
-      user?.uid ?? "",
-    );
-  }, [rooms, filter, showingEnded, user?.uid]);
-  const empty = !isLoading && !isError && invites.length === 0 && mine.length === 0;
+  const { invites, mine, ended } = useMemo(
+    () => roomSections(open.data ?? [], past.data ?? [], filter, user?.uid ?? ""),
+    [open.data, past.data, filter, user?.uid],
+  );
+  const loadingEnded = wantEnded && past.isLoading;
+  const empty =
+    !open.isLoading && !loadingEnded && !error && invites.length === 0 && mine.length === 0 && ended.length === 0;
+  // Section titles only when there's more than one section to tell apart.
+  const titled = invites.length > 0 || ended.length > 0;
 
   return (
     <div>
@@ -71,7 +72,7 @@ export function RoomsBrowser() {
         </button>
       </div>
 
-      {isError && (
+      {error && (
         <p className="mt-6 rounded-2xl border border-error/30 bg-error-container/40 p-4 text-sm text-on-error-container">
           {error instanceof Error ? error.message : "Could not load rooms."}
         </p>
@@ -90,35 +91,47 @@ export function RoomsBrowser() {
         </section>
       )}
 
-      <section className="mt-8">
-        {invites.length > 0 && <SectionTitle count={mine.length}>Your rooms</SectionTitle>}
-        <div className={cn("grid gap-5 md:grid-cols-2 lg:grid-cols-3", invites.length > 0 && "mt-4")}>
-          {isLoading &&
-            Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-52 animate-pulse rounded-3xl border-2 border-ink/10 bg-surface-container-low"
-              />
-            ))}
+      {!showingEnded && (
+        <section className="mt-8">
+          {titled && <SectionTitle count={mine.length}>Your rooms</SectionTitle>}
+          <div className={cn("grid gap-5 md:grid-cols-2 lg:grid-cols-3", titled && "mt-4")}>
+            {open.isLoading && <Skeletons />}
 
-          {!isLoading && mine.map((room: Room) => <RoomCard key={room.id} room={room} uid={user?.uid} />)}
+            {!open.isLoading && mine.map((room: Room) => <RoomCard key={room.id} room={room} uid={user?.uid} />)}
 
-          {!isLoading && !showingEnded && (
-            <button
-              onClick={() => setCreating(true)}
-              className="flex min-h-52 flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-ink/30 bg-surface-container-low/50 p-6 text-center transition-colors hover:border-ink hover:bg-card"
-            >
-              <span className="grid h-12 w-12 place-items-center rounded-full border-2 border-ink bg-lime text-ink-fixed shadow-pop-sm">
-                <Plus className="h-6 w-6" />
-              </span>
-              <p className="font-display font-bold text-ink">Start a new room</p>
-              <p className="text-sm text-on-surface-variant">
-                Pick a topic, or let the AI host pick one. It keeps the conversation moving.
-              </p>
-            </button>
+            {!open.isLoading && (
+              <button
+                onClick={() => setCreating(true)}
+                className="flex min-h-52 flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-ink/30 bg-surface-container-low/50 p-6 text-center transition-colors hover:border-ink hover:bg-card"
+              >
+                <span className="grid h-12 w-12 place-items-center rounded-full border-2 border-ink bg-lime text-ink-fixed shadow-pop-sm">
+                  <Plus className="h-6 w-6" />
+                </span>
+                <p className="font-display font-bold text-ink">Start a new room</p>
+                <p className="text-sm text-on-surface-variant">
+                  Pick a topic, or let the AI host pick one. It keeps the conversation moving.
+                </p>
+              </button>
+            )}
+          </div>
+        </section>
+      )}
+
+      {(ended.length > 0 || (showingEnded && loadingEnded)) && (
+        <section className="mt-8">
+          {!showingEnded && (
+            <SectionTitle icon={<History className="h-4 w-4" />} count={ended.length}>
+              Ended
+            </SectionTitle>
           )}
-        </div>
-      </section>
+          <div className={cn("grid gap-5 md:grid-cols-2 lg:grid-cols-3", !showingEnded && "mt-4")}>
+            {showingEnded && loadingEnded && <Skeletons />}
+            {ended.map((room) => (
+              <RoomCard key={room.id} room={room} uid={user?.uid} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {empty && (
         <div className="mt-4 flex flex-col items-center gap-2 rounded-3xl border-2 border-ink/15 bg-card py-16 text-center">
@@ -140,6 +153,16 @@ export function RoomsBrowser() {
 
       {creating && <CreateRoomModal onClose={() => setCreating(false)} />}
     </div>
+  );
+}
+
+function Skeletons() {
+  return (
+    <>
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="h-52 animate-pulse rounded-3xl border-2 border-ink/10 bg-surface-container-low" />
+      ))}
+    </>
   );
 }
 

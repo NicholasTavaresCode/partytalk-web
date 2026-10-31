@@ -155,7 +155,14 @@ export function useRoomLifecycle(id: string) {
         if (e instanceof ApiError && e.status === 409) void invalidate();
       },
     }),
-    end: useMutation({ mutationFn: () => roomsApi.end(id), onSuccess: applyRoom }),
+    end: useMutation({
+      mutationFn: () => roomsApi.end(id),
+      onSuccess: (room) => {
+        applyRoom(room);
+        // It belongs under Ended now; refetch that list next time it's shown.
+        void qc.invalidateQueries({ queryKey: queryKeys.endedRooms });
+      },
+    }),
     changeTopic: useMutation({ mutationFn: () => roomsApi.changeTopic(id) }),
   };
 }
