@@ -5,6 +5,7 @@ import Link from "next/link";
 import { LogOut, ChevronDown } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useMe } from "@/lib/queries";
+import { IELTS_ENABLED } from "@/lib/features";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { ParticipantAvatar } from "@/components/practice/ParticipantAvatar";
 import { LevelBadge } from "@/components/practice/LevelBadge";

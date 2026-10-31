@@ -104,6 +104,10 @@ const config: Config = {
       maxWidth: {
         content: "1200px",
       },
+      screens: {
+        // Laptop-height and small-phone screens, where one-screen layouts tighten up.
+        short: { raw: "(max-height: 760px)" },
+      },
       keyframes: {
         "pulse-ring": {
           "0%, 100%": { opacity: "1", transform: "scale(1)" },

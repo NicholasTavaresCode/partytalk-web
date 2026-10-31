@@ -32,6 +32,8 @@ export function useMe() {
         throw e;
       }
     },
+    // A 403 means "not on the allow-list" — retrying won't change it.
+    retry: (count, e) => !(e instanceof ApiError && e.status === 403) && count < 1,
   });
 }
 
@@ -83,6 +85,8 @@ export function useRoom(id: string) {
     queryKey: queryKeys.room(id),
     enabled: !!user && !!id,
     queryFn: () => roomsApi.get(id),
+    // 403 (not invited) / 404 are answers, not glitches — don't retry them.
+    retry: (count, e) => !(e instanceof ApiError && (e.status === 403 || e.status === 404)) && count < 1,
   });
 }
 

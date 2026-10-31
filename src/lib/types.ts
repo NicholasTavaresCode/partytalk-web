@@ -124,9 +124,9 @@ export interface SocketErrorEvent {
 
 /**
  * Server → client events. The `webrtc:*` relays follow the contract in the
- * backend's `docs/audio-architecture.md` (P2P mesh, milestone M1). Those relays
- * are not yet implemented server-side; event names may need minor reconciliation
- * when the backend ships signaling.
+ * backend's `docs/audio-architecture.md` (P2P mesh, milestone M1), relayed by
+ * its RoomsGateway. `webrtc:peer-left` fires when a voice member leaves or
+ * disconnects.
  */
 export interface ServerToClientEvents {
   /**
@@ -146,6 +146,17 @@ export interface ServerToClientEvents {
   "webrtc:peer-offer": (e: { fromUid: string; sdp: RTCSessionDescriptionInit }) => void;
   "webrtc:peer-answer": (e: { fromUid: string; sdp: RTCSessionDescriptionInit }) => void;
   "webrtc:peer-ice": (e: { fromUid: string; candidate: RTCIceCandidateInit }) => void;
+  "webrtc:peer-left": (e: { uid: string }) => void;
+  /** Sent to you alone when the owner revokes your invite; you're out of the room and voice. */
+  removedFromRoom: (e: { roomId: string }) => void;
+  /**
+   * The room's REST state changed (someone joined/left, the host started it, an invite
+   * was revoked). No data on purpose — refetch `GET /rooms/:id`, which hides owner-only
+   * fields per caller.
+   */
+  roomUpdated: (e: { roomId: string }) => void;
+  /** Sent to you alone on `joinRoom`: everyone connected right now, one entry per person. */
+  roster: (e: { roomId: string; members: { uid: string; name?: string }[] }) => void;
 }
 
 export interface ClientToServerEvents {

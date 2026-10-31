@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { cn } from "@/lib/cn";
+import { IELTS_ENABLED } from "@/lib/features";
 import { Wordmark } from "@/components/brand/Wordmark";
 
 const COLUMNS = [

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Mic,
   MicOff,
@@ -78,15 +79,23 @@ export function RoomExperience({ roomId }: { roomId: string }) {
     }
   }, [remaining, rt.ended, qc, roomId]);
 
-  // Auto-join once (idempotent server-side; a 409 just means already joined).
+  // Take a seat once (idempotent server-side). Invitees just join; a visitor with
+  // an invite link redeems it — the room itself stays 403 until they do.
   const joinedRef = useRef(false);
   useEffect(() => {
-    if (!room || !user || joinedRef.current) return;
-    if (!room.participantIds.includes(user.uid) && room.status !== "ended") {
-      joinedRef.current = true;
-      join.mutate();
-    }
-  }, [room, user, join]);
+    if (!user || joinedRef.current) return;
+    const needsSeat = room
+      ? !room.participantIds.includes(user.uid) && room.status !== "ended"
+      : roomErrorStatus === 403 && !!inviteCode;
+    if (!needsSeat) return;
+    joinedRef.current = true;
+    join.mutate(inviteCode, {
+      // The code has done its job — keep it out of the address bar and history.
+      onSuccess: () => {
+        if (inviteCode) router.replace(`/practice/${roomId}`);
+      },
+    });
+  }, [room, roomErrorStatus, user, join, inviteCode, router, roomId]);
 
   const remoteByUid = useMemo(
     () => new Map(voice.remoteStreams.map((r) => [r.uid, r.stream])),
@@ -98,6 +107,21 @@ export function RoomExperience({ roomId }: { roomId: string }) {
     [rt.hostMessages],
   );
 
+  if (rt.removed) return <RoomAccessScreen reason="removed" />;
+  if (roomErrorStatus === 404) return <RoomAccessScreen reason="not-found" />;
+  if (roomErrorStatus === 403 && (!inviteCode || join.isError)) {
+    return (
+      <RoomAccessScreen
+        reason="not-invited"
+        email={user?.email}
+        detail={
+          inviteCode && join.error instanceof Error
+            ? `The invite link didn't work: ${join.error.message}`
+            : undefined
+        }
+      />
+    );
+  }
   if (isLoading || !room) return <LoadingScreen label="Joining room…" />;
 
   const isOwner = room.ownerId === user?.uid;

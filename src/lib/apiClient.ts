@@ -1,5 +1,5 @@
 import { env } from "./env";
-import { getIdToken } from "./googleAuth";
+import { getIdToken, expireSession } from "./googleAuth";
 
 /** Typed error carrying the API's HTTP status (401 → sign in, 429 → rate limit, …). */
 export class ApiError extends Error {
@@ -26,6 +26,9 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
+  // Expired or rejected credential: back to the sign-in screen rather than failing silently.
+  if (res.status === 401 && token) expireSession(token);
+
   if (res.status === 204) return undefined as T;
 
   const json = await res.json().catch(() => null);
@@ -44,6 +47,7 @@ export const api = {
   get: <T>(path: string) => request<T>("GET", path),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body),
+  delete: <T>(path: string) => request<T>("DELETE", path),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
   del: <T>(path: string) => request<T>("DELETE", path),
 };

@@ -8,6 +8,8 @@ import { ApiError } from "@/lib/apiClient";
 import { buildCreateRoomInput } from "@/lib/roomForm";
 import { ROOM_DURATIONS, type Room, type RoomDuration, type RoomStatus } from "@/lib/types";
 import { cn } from "@/lib/cn";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { EmailListInput, useEmailList } from "./EmailListInput";
 import { RoomCard } from "./RoomCard";
 
 const FILTERS: { label: string; value: "all" | RoomStatus }[] = [
@@ -90,7 +92,9 @@ export function RoomsBrowser() {
         <div className="mt-4 flex flex-col items-center gap-2 rounded-3xl border border-outline-variant bg-white py-16 text-center">
           <Radio className="h-6 w-6 text-primary" />
           <p className="font-semibold text-on-surface">No rooms here yet</p>
-          <p className="text-sm text-on-surface-variant">Be the first to start one.</p>
+          <p className="text-sm text-on-surface-variant">
+            Start one, or ask a host to invite you — you only see rooms you&apos;re invited to.
+          </p>
         </div>
       )}
 
@@ -124,13 +128,18 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+      onClick={() => {
+        if (!dirty) onClose();
+      }}
+    >
       <form
         onClick={(e) => e.stopPropagation()}
         onSubmit={submit}
-        className="w-full max-w-lg rounded-3xl border border-outline-variant bg-white p-7 shadow-2xl"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col rounded-3xl border border-outline-variant bg-white shadow-2xl"
       >
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between border-b border-outline-variant px-7 pb-4 pt-6">
           <h2 className="font-display text-xl font-extrabold tracking-tight text-primary">
             Create a room
           </h2>
@@ -179,29 +188,26 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
           </>
         )}
 
-        <div className="mt-5 flex items-center justify-between">
-          <span className="text-sm font-semibold text-on-surface">Max participants</span>
-          <div className="flex items-center gap-2">
-            {[1, 2, 3, 4, 5].map((n) => (
+          <p className="mt-5 flex items-center gap-1.5 text-sm font-semibold text-on-surface">
+            <Sparkles className="h-4 w-4 text-primary" /> AI host style
+          </p>
+          <div className="mt-2 grid gap-2">
+            {PERSONAS.map((p) => (
               <button
                 type="button"
-                key={n}
-                onClick={() => setMaxParticipants(n)}
+                key={p}
+                onClick={() => setPersona(p)}
                 className={cn(
-                  "h-9 w-9 rounded-lg border text-sm font-bold transition-colors",
-                  maxParticipants === n
-                    ? "border-primary bg-primary text-on-primary"
+                  "rounded-xl border px-3.5 py-2.5 text-left text-sm transition-colors",
+                  persona === p
+                    ? "border-primary bg-primary-fixed/40 text-on-surface"
                     : "border-outline-variant text-on-surface-variant hover:border-primary/40",
                 )}
               >
-                {n}
+                {p}
               </button>
             ))}
           </div>
-        </div>
-        <p className="mt-1.5 text-xs text-on-surface-variant">
-          Pick 1 for a solo test room. Capped at 5 while voice runs over a peer-to-peer mesh.
-        </p>
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           <span className="text-sm font-semibold text-on-surface">Length</span>
@@ -254,7 +260,7 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
           </p>
         ) : null}
 
-        <div className="mt-7 flex justify-end gap-3">
+        <div className="flex justify-end gap-3 border-t border-outline-variant px-7 py-4">
           <button
             type="button"
             onClick={onClose}
@@ -267,7 +273,7 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
             disabled={create.isPending || !input}
             className="h-11 rounded-lg bg-primary px-6 font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {create.isPending ? "Creating…" : "Create & enter"}
+            {create.isPending ? "Creating…" : invited ? `Create & invite ${invited}` : "Create & enter"}
           </button>
         </div>
       </form>

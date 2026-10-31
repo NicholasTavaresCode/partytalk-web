@@ -7,7 +7,9 @@ export const roomsApi = {
   list: (limit?: number) => api.get<Room[]>(`/rooms${qs(limit)}`),
   get: (id: string) => api.get<Room>(`/rooms/${id}`),
   create: (input: CreateRoomInput) => api.post<Room>("/rooms", input),
-  join: (id: string) => api.post<Room>(`/rooms/${id}/join`),
+  /** `inviteCode` (from an invite link) admits a caller who isn't on the invite list yet. */
+  join: (id: string, inviteCode?: string) =>
+    api.post<Room>(`/rooms/${id}/join`, inviteCode ? { inviteCode } : undefined),
   leave: (id: string) => api.post<Room>(`/rooms/${id}/leave`),
   start: (id: string) => api.post<Room>(`/rooms/${id}/start`),
   end: (id: string) => api.post<Room>(`/rooms/${id}/end`),

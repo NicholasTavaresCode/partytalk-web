@@ -1,0 +1,22 @@
+# Built by deploy-hml.sh — `gcloud builds submit --config cloudbuild.yaml`. Exists only
+# because `gcloud run deploy --source .` cannot pass Docker build args, and the
+# NEXT_PUBLIC_* values must be present during `next build` (see Dockerfile).
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg=NEXT_PUBLIC_API_BASE_URL=${_NEXT_PUBLIC_API_BASE_URL}
+      - --build-arg=NEXT_PUBLIC_API_SOCKET_URL=${_NEXT_PUBLIC_API_SOCKET_URL}
+      - --build-arg=NEXT_PUBLIC_GOOGLE_CLIENT_ID=${_NEXT_PUBLIC_GOOGLE_CLIENT_ID}
+      - --tag=${_IMAGE}:${_TAG}
+      - --tag=${_IMAGE}:latest
+      - .
+
+images:
+  - ${_IMAGE}:${_TAG}
+  - ${_IMAGE}:latest
+
+options:
+  # Required when the build runs as a user-specified service account (deploy-hml.sh
+  # passes --service-account): Cloud Build refuses to start without a logging choice.
+  logging: CLOUD_LOGGING_ONLY

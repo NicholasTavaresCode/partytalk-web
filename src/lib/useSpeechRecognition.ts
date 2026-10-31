@@ -25,9 +25,10 @@ type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 
 /**
  * Browser speech-to-text (Chrome/Edge). Each finalized utterance is handed to
- * `onFinal` so the caller can post it as a transcript segment. Where the API is
- * unavailable (e.g. Firefox), `supported` is false and the UI offers a typed
- * fallback — the frontend never does its own transcription beyond this browser API.
+ * `onFinal` so the caller can post it as a transcript segment for the AI host.
+ * Where the API is unavailable (e.g. Firefox), `supported` is false and the AI
+ * host can't hear that participant — the frontend never does its own
+ * transcription beyond this browser API.
  */
 export function useSpeechRecognition(onFinal: (text: string) => void) {
   const [supported, setSupported] = useState(false);
