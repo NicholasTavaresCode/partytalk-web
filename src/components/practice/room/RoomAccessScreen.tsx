@@ -42,9 +42,9 @@ export function RoomAccessScreen({
         <Logo className="h-7 w-7" />
       </header>
       <div className="grid flex-1 place-items-center p-6">
-        <div className="w-full max-w-md rounded-3xl border-2 border-ink bg-white p-8 text-center shadow-pop-lg">
-          <span className="mx-auto grid h-14 w-14 place-items-center rounded-full border-2 border-ink bg-lime shadow-pop-sm">
-            <Icon className="h-7 w-7 text-ink" />
+        <div className="w-full max-w-md rounded-3xl border-2 border-ink bg-card p-8 text-center shadow-pop-lg">
+          <span className="mx-auto grid h-14 w-14 place-items-center rounded-full border-2 border-ink bg-lime shadow-pop-sm text-ink-fixed">
+            <Icon className="h-7 w-7 text-ink-fixed" />
           </span>
           <h1 className="mt-5 font-display text-2xl font-extrabold tracking-tight text-ink">{title}</h1>
           <p className="mt-2 text-sm leading-relaxed text-on-surface-variant">{body}</p>

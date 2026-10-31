@@ -19,12 +19,12 @@ export default function PracticePage() {
           <section className="relative isolate border-b border-ink/10">
             <div aria-hidden className="bg-dots pointer-events-none absolute inset-0 -z-10" />
             <Container className="py-10">
-              <span className="inline-flex items-center gap-2 rounded-pill border-2 border-ink bg-white px-3 py-1 font-label text-xs font-bold uppercase tracking-wider text-ink shadow-pop-sm">
-                <span className="h-2 w-2 animate-pulse rounded-full border border-ink bg-lime" /> Live rooms
+              <span className="inline-flex items-center gap-2 rounded-pill border-2 border-ink bg-card px-3 py-1 font-label text-xs font-bold uppercase tracking-wider text-ink shadow-pop-sm">
+                <span className="h-2 w-2 animate-pulse rounded-full border border-ink bg-lime text-ink-fixed" /> Live rooms
               </span>
               <h1 className="mt-4 font-display text-3xl font-extrabold tracking-tight text-ink sm:text-5xl">
                 Find a room, start{" "}
-                <span className="inline-block -rotate-1 rounded-xl border-2 border-ink bg-lime px-2 shadow-pop-sm">talking.</span>
+                <span className="inline-block -rotate-1 rounded-xl border-2 border-ink bg-lime px-2 shadow-pop-sm text-ink-fixed">talking.</span>
               </h1>
               <p className="mt-3 max-w-2xl text-lg text-on-surface-variant">
                 Accept an invitation, join a live conversation or open your own. Our AI host moves the

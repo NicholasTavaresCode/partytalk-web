@@ -51,7 +51,7 @@ export function ParticipantAvatar({
       {isAI ? "✦" : initials(name)}
       {showFlag && flag && (
         <span
-          className="absolute -bottom-1 -right-1 grid place-items-center rounded-full bg-white shadow-sm"
+          className="absolute -bottom-1 -right-1 grid place-items-center rounded-full bg-card shadow-sm"
           style={{ width: size * 0.42, height: size * 0.42, fontSize: size * 0.24 }}
         >
           {flag}

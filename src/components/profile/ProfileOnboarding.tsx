@@ -22,7 +22,7 @@ export function ProfileOnboarding() {
       <div aria-hidden className="bg-dots pointer-events-none absolute inset-0" />
       <form
         onSubmit={submit}
-        className="relative w-full max-w-md rounded-3xl border-2 border-ink bg-white p-8 shadow-pop-lg"
+        className="relative w-full max-w-md rounded-3xl border-2 border-ink bg-card p-8 shadow-pop-lg"
       >
         <Wordmark />
         <h1 className="mt-6 font-display text-2xl font-extrabold tracking-tight text-ink">
@@ -37,7 +37,7 @@ export function ProfileOnboarding() {
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           placeholder="e.g. Lucas"
-          className="mt-1.5 h-11 w-full rounded-xl border-2 border-ink/15 bg-white px-3 outline-none transition-colors focus:border-ink"
+          className="mt-1.5 h-11 w-full rounded-xl border-2 border-ink/15 bg-card px-3 outline-none transition-colors focus:border-ink"
           maxLength={40}
           autoFocus
         />

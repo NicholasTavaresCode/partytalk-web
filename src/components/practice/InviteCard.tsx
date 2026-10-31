@@ -34,7 +34,7 @@ export function InviteCard({ room }: { room: Room }) {
     });
 
   return (
-    <article className="flex flex-col rounded-3xl border-2 border-ink bg-white p-6 shadow-pop">
+    <article className="flex flex-col rounded-3xl border-2 border-ink bg-card p-6 shadow-pop">
       <div className="flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-1.5 rounded-pill border-2 border-ink bg-purple px-2.5 py-0.5 font-label text-[11px] font-bold uppercase tracking-wider text-white">
           <Mail className="h-3 w-3" aria-hidden /> Invitation
@@ -50,7 +50,7 @@ export function InviteCard({ room }: { room: Room }) {
         <RoomStatusChip status={room.status} />
         {room.topicPickedByHost && (
           <span className="inline-flex items-center gap-1">
-            <Sparkles className="h-3.5 w-3.5 text-purple" /> picked by the host
+            <Sparkles className="h-3.5 w-3.5 text-purple-fg" /> picked by the host
           </span>
         )}
       </span>
@@ -69,7 +69,7 @@ export function InviteCard({ room }: { room: Room }) {
         <button
           onClick={onAccept}
           disabled={full || accept.isPending}
-          className="inline-flex h-10 items-center gap-1.5 rounded-pill border-2 border-ink bg-lime px-4 font-display text-sm font-bold text-ink shadow-pop-sm transition-all hover:translate-x-px hover:translate-y-px hover:bg-lime-light hover:shadow-none disabled:pointer-events-none disabled:opacity-50"
+          className="inline-flex h-10 items-center gap-1.5 rounded-pill border-2 border-ink bg-lime px-4 font-display text-sm font-bold text-ink-fixed shadow-pop-sm transition-all hover:translate-x-px hover:translate-y-px hover:bg-lime-light hover:shadow-none disabled:pointer-events-none disabled:opacity-50"
         >
           {accept.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" />

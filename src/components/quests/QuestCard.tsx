@@ -4,7 +4,7 @@ import { cn } from "@/lib/cn";
 import type { QuestSkill, SideQuest } from "@/lib/types";
 
 const SKILL_STYLE: Record<QuestSkill, { icon: typeof PenLine; cls: string }> = {
-  grammar: { icon: PenLine, cls: "border-purple/30 bg-purple-light text-purple" },
+  grammar: { icon: PenLine, cls: "border-purple/30 bg-purple-light text-purple-fg" },
   vocabulary: { icon: BookOpen, cls: "border-lime-dim bg-lime/25 text-on-tertiary-fixed-variant" },
   fluency: { icon: Waves, cls: "border-secondary/40 bg-coral/15 text-secondary" },
   interaction: { icon: MessagesSquare, cls: "border-ink/15 bg-surface-container text-ink" },
@@ -37,7 +37,7 @@ export function QuestCard({ quest, compact = false }: { quest: SideQuest; compac
   return (
     <article
       className={cn(
-        "flex flex-col gap-2 rounded-2xl border-2 bg-white p-4",
+        "flex flex-col gap-2 rounded-2xl border-2 bg-card p-4",
         done ? "border-ink/15" : "border-ink shadow-pop-sm",
         compact && "p-3.5",
       )}

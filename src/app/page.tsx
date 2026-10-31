@@ -61,15 +61,15 @@ export default function HomePage() {
 
             <div className="space-y-3 motion-safe:animate-fade-up" style={enter(1)}>
               <h1 className="font-display text-[2.6rem] font-extrabold leading-[1.04] tracking-tight sm:text-5xl lg:text-[3.1rem] xl:text-[3.3rem] short:text-[2.5rem] lg:short:text-[2.9rem]">
-                Fluency happens when things get{" "}
+                Learning comes with{" "}
                 <span className="relative inline-block -rotate-[1.5deg] rounded-xl border-2 border-ink bg-lime px-2 shadow-pop-sm">
-                  spicy.
+                  friction.
                 </span>
               </h1>
               <p className="max-w-xl text-base font-medium leading-relaxed text-on-surface-variant lg:text-[17px]">
-                Open a small voice room with your group and just talk. An AI host listens in and,
-                when a topic runs dry, throws in a completely different one, so you learn to think
-                on your feet in English. Everyone gets a report when the room ends.
+                Open a small voice room with your group and just talk. Our AI host keeps challenging the
+                group: when a topic runs dry, it throws in a completely different one, so you learn to
+                improvise and think fast in English. Everyone gets a report when the room ends.
               </p>
             </div>
 

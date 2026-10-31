@@ -15,7 +15,7 @@ import {
   Shuffle,
   Volume2,
   VolumeX,
-  Users,
+  GraduationCap,
   Sparkles,
   Timer,
   UserPlus,
@@ -40,8 +40,6 @@ import { InvitePanel } from "./InvitePanel";
 import { RoomAccessScreen } from "./RoomAccessScreen";
 import { cn } from "@/lib/cn";
 import type { HostMessage, HostMessageTrigger, RoomReport } from "@/lib/types";
-
-const HOST_NAME = "AI Host";
 
 const TRIGGER: Record<HostMessageTrigger, string> = {
   volume: "Topic covered",
@@ -172,12 +170,49 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
   const topic = currentTopic(rt.hostMessages, room.topic);
 
   return (
-    <div className="flex h-screen flex-col bg-stage text-white">
-      {/* Stage */}
-      <main className="relative flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4">
-        {/* The host is not a participant: it sits above the room, listening, and
-            speaks up through this bar when it changes the topic. */}
-        <HostBar
+    <div className="relative isolate flex h-[100dvh] flex-col bg-cream text-ink">
+      <div aria-hidden className="bg-dots pointer-events-none absolute inset-0 -z-10" />
+
+      {/* Header, like the landing's: the room, its status and clock, and who can join. */}
+      <header className="z-30 flex h-16 shrink-0 items-center justify-between gap-3 border-b border-ink/5 bg-cream/90 px-4 backdrop-blur-md sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <Logo className="h-9 w-9 shrink-0" />
+          <div className="min-w-0">
+            <p className="flex min-w-0 items-center gap-2 font-display text-base font-bold leading-tight">
+              <span className="truncate">{room.topic}</span>
+              <StatusChip live={live} />
+            </p>
+            <p className="truncate text-[11px] font-medium text-on-surface-variant">
+              {room.participantIds.length} of {room.maxParticipants} seats
+              {room.durationMinutes != null && <> · {room.durationMinutes}-min session</>}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          {live && remaining !== null && <Countdown ms={remaining} />}
+          {isOwner && (
+            <button
+              onClick={() => setInvitesOpen((v) => !v)}
+              aria-expanded={invitesOpen}
+              title={room.status === "waiting" ? "Who can join" : "Guest list (locked once the room starts)"}
+              className={cn(
+                "inline-flex h-9 items-center gap-1.5 rounded-pill border-2 px-3 font-display text-sm font-bold transition-colors",
+                invitesOpen ? "border-ink bg-ink-fixed text-lime" : "border-ink/15 bg-card text-ink hover:border-ink",
+              )}
+            >
+              <UserPlus className="h-4 w-4" />
+              <span className="hidden sm:inline">{room.status === "waiting" ? "Invite" : "Guests"}</span>
+              {!!room.invitedEmails?.length && <span className="opacity-70">{room.invitedEmails.length}</span>}
+            </button>
+          )}
+        </div>
+      </header>
+
+      <main className="relative mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col gap-4 p-4 sm:p-6">
+        {/* The host is not a participant and has no tile: it listens in and speaks up
+            through this banner when it changes the topic. */}
+        <HostBanner
           live={live}
           topic={topic}
           openingTopic={room.topic}
@@ -188,10 +223,10 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
           muted={hostMuted}
         />
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto p-1">
           <div
             className={cn(
-              "mx-auto grid h-full max-w-6xl auto-rows-fr place-content-center gap-3",
+              "mx-auto grid h-full max-w-4xl auto-rows-fr place-content-center gap-3 sm:gap-4",
               gridColsClass(room.participantIds.length),
             )}
           >
@@ -221,37 +256,17 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
         {isOwner && invitesOpen && <InvitePanel room={room} onClose={() => setInvitesOpen(false)} />}
 
         {start.isError && !(start.error instanceof ApiError && start.error.status === 409) ? (
-          <p className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-secondary px-4 py-2 text-sm">
-            Couldn&apos;t start: {start.error.message}
-          </p>
+          <Toast tone="error">Couldn&apos;t start: {start.error.message}</Toast>
         ) : rt.error ? (
-          <p className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-secondary px-4 py-2 text-sm">
-            {rt.error}
-          </p>
+          <Toast tone="error">{rt.error}</Toast>
         ) : isParticipant && !rt.connected ? (
-          <p className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-stage-tile px-4 py-2 text-sm text-white/80">
-            Connecting to the room…
-          </p>
+          <Toast>Connecting to the room…</Toast>
         ) : null}
       </main>
 
-      {/* Bottom bar */}
-      <footer className="grid h-20 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 px-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <Logo className="hidden h-6 w-6 sm:block" />
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium">
-              {live && remaining !== null ? <Countdown ms={remaining} /> : <Clock />}
-              <span className="mx-2 text-white/40">|</span>
-              {live ? "Live" : "Waiting to start"}
-            </p>
-            <p className="truncate text-xs text-white/50">
-              {room.durationMinutes != null && <>{room.durationMinutes} min session</>}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 sm:gap-3">
+      {/* Control dock */}
+      <footer className="shrink-0 px-4 pb-4 pt-1">
+        <div className="mx-auto flex w-fit max-w-full items-center gap-2 rounded-pill border-2 border-ink bg-card p-2 shadow-pop sm:gap-3">
           <CtrlButton
             title={
               micOn
@@ -264,6 +279,7 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
                       ? "Turn on microphone (reconnecting to the room…)"
                       : "Turn on microphone"
             }
+            active={micOn}
             off={!micOn}
             onClick={toggleMic}
           >
@@ -289,15 +305,9 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
             <CtrlButton
               title="Change topic"
               disabled={changeTopic.isPending}
-              onClick={() =>
-                changeTopic.mutate(undefined, { onSuccess: (m) => rt.addHostMessage(m) })
-              }
+              onClick={() => changeTopic.mutate(undefined, { onSuccess: (m) => rt.addHostMessage(m) })}
             >
-              {changeTopic.isPending ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <Shuffle className="h-5 w-5" />
-              )}
+              {changeTopic.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Shuffle className="h-5 w-5" />}
             </CtrlButton>
           )}
 
@@ -305,7 +315,7 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
             <button
               onClick={() => start.mutate()}
               disabled={start.isPending}
-              className="inline-flex h-12 items-center gap-2 rounded-full bg-lime px-5 font-medium text-ink hover:bg-lime-light disabled:opacity-60"
+              className="inline-flex h-12 items-center gap-2 rounded-pill border-2 border-ink bg-lime px-5 font-display font-bold text-ink-fixed shadow-pop-sm transition-all hover:translate-x-px hover:translate-y-px hover:bg-lime-light hover:shadow-none disabled:opacity-60"
             >
               <Play className="h-5 w-5" /> {start.isPending ? "Starting…" : "Start"}
             </button>
@@ -316,7 +326,7 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
               onClick={() => end.mutate()}
               disabled={end.isPending}
               title="End for everyone"
-              className="inline-flex h-12 items-center gap-2 rounded-full bg-secondary px-5 font-medium text-white hover:bg-secondary-container disabled:opacity-60"
+              className="inline-flex h-12 items-center gap-2 rounded-pill border-2 border-ink bg-danger px-5 font-display font-bold text-white shadow-pop-sm transition-all hover:translate-x-px hover:translate-y-px hover:shadow-none disabled:opacity-60"
             >
               <PhoneOff className="h-5 w-5" /> {end.isPending ? "Ending…" : "End"}
             </button>
@@ -327,40 +337,15 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
               disabled={leave.isPending}
               title="Leave"
               aria-label="Leave"
-              className="grid h-12 w-16 place-items-center rounded-full bg-secondary text-white transition-colors hover:bg-secondary-container disabled:opacity-60"
+              className="grid h-12 w-16 place-items-center rounded-pill border-2 border-ink bg-danger text-white shadow-pop-sm transition-all hover:translate-x-px hover:translate-y-px hover:shadow-none disabled:opacity-60"
             >
               {leave.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <PhoneOff className="h-5 w-5" />}
             </button>
           )}
         </div>
-
-        <div className="flex items-center justify-end gap-1">
-          {isOwner && (
-            <button
-              onClick={() => setInvitesOpen((v) => !v)}
-              aria-expanded={invitesOpen}
-              title={room.status === "waiting" ? "Who can join" : "Guest list (locked once the room starts)"}
-              className={cn(
-                "inline-flex h-10 items-center gap-1.5 rounded-full px-3 text-sm transition-colors",
-                invitesOpen ? "bg-lime text-ink" : "text-white/80 hover:bg-stage-hover",
-              )}
-            >
-              <UserPlus className="h-5 w-5" />
-              <span className="hidden sm:inline">{room.status === "waiting" ? "Invite" : "Guests"}</span>
-              {!!room.invitedEmails?.length && <span className="opacity-70">{room.invitedEmails.length}</span>}
-            </button>
-          )}
-          <span
-            title={`${room.participantIds.length} of ${room.maxParticipants} people`}
-            className="inline-flex h-10 items-center gap-1.5 rounded-full px-3 text-sm text-white/80"
-          >
-            <Users className="h-5 w-5" />
-            {room.participantIds.length}/{room.maxParticipants}
-          </span>
-        </div>
       </footer>
 
-      {/* Hidden remote audio (P2P mesh, when signaling is live) */}
+      {/* Hidden remote audio (P2P mesh) */}
       {voice.remoteStreams.map((r) => (
         <RemoteAudio key={r.uid} stream={r.stream} />
       ))}
@@ -368,19 +353,50 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
   );
 }
 
+function StatusChip({ live }: { live: boolean }) {
+  return live ? (
+    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-pill bg-coral/15 px-2 py-px font-label text-[10px] font-bold uppercase tracking-wider text-secondary">
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inset-0 rounded-full bg-lime motion-safe:animate-ping text-ink-fixed" />
+        <span className="relative h-2 w-2 rounded-full border border-ink bg-lime text-ink-fixed" />
+      </span>
+      Live
+    </span>
+  ) : (
+    <span className="inline-flex shrink-0 items-center rounded-pill bg-purple-light px-2 py-px font-label text-[10px] font-bold uppercase tracking-wider text-purple-fg">
+      Waiting
+    </span>
+  );
+}
+
+function Toast({ tone = "info", children }: { tone?: "info" | "error"; children: React.ReactNode }) {
+  return (
+    <p
+      role={tone === "error" ? "alert" : "status"}
+      className={cn(
+        "absolute bottom-4 left-1/2 z-10 max-w-[calc(100%-2rem)] -translate-x-1/2 truncate whitespace-nowrap rounded-pill border-2 border-ink px-4 py-2 text-xs font-semibold shadow-pop-sm sm:text-sm",
+        tone === "error" ? "bg-danger text-white" : "bg-card text-ink",
+      )}
+    >
+      {children}
+    </p>
+  );
+}
+
 /* --------------------------------- Tiles --------------------------------- */
 
-/** Meet-style column count: keep tiles roughly 16:9 as the room fills. */
+/** Column count that keeps the cards a comfortable size as the room fills. */
 function gridColsClass(n: number): string {
   if (n <= 1) return "grid-cols-1";
   if (n <= 2) return "grid-cols-1 sm:grid-cols-2";
   if (n <= 4) return "grid-cols-2";
-  if (n <= 6) return "grid-cols-2 md:grid-cols-3";
-  return "grid-cols-3 md:grid-cols-4";
+  return "grid-cols-2 md:grid-cols-3";
 }
 
+/** A person in the room, as the landing's room card shows them: lime and lifted while they speak. */
 function Tile({
   name,
+  you = false,
   owner,
   online = true,
   speaking,
@@ -388,40 +404,50 @@ function Tile({
   status,
 }: {
   name: string;
+  /** Your own tile: the label says so (the avatar keeps your initials). */
+  you?: boolean;
   owner?: boolean;
   online?: boolean;
   speaking: boolean;
   level?: number;
-  /** Small corner badge when not speaking. */
-  status?: "mic-off";
+  /** Shown while not speaking. */
+  status: "listening" | "mic-off" | "offline";
 }) {
   return (
     <div
       className={cn(
-        "relative flex min-h-[9rem] items-center justify-center overflow-hidden rounded-xl bg-stage-tile transition-shadow duration-150",
-        speaking ? "shadow-[inset_0_0_0_3px_#d2e823]" : "shadow-none",
-        !online && "opacity-50",
+        "relative flex min-h-[9rem] flex-col items-center justify-center gap-3 rounded-3xl border-2 p-4 transition-all duration-150",
+        speaking
+          ? "-translate-y-0.5 border-ink bg-lime/25 shadow-pop"
+          : "border-ink/10 bg-card",
+        !online && "opacity-60",
       )}
     >
       <ParticipantAvatar
         name={name}
-        size={96}
-        className={cn("transition-transform duration-150", speaking && "scale-105")}
+        size={80}
+        className={cn("border-2 border-ink transition-transform duration-150", speaking && "scale-105")}
       />
-
-      <div className="absolute bottom-2.5 left-3 flex items-center gap-1.5 text-sm font-medium [text-shadow:0_1px_2px_rgba(0,0,0,0.7)]">
-        <span className="max-w-[12rem] truncate">{name}</span>
-        {owner && <Crown className="h-3.5 w-3.5 text-lime" />}
-      </div>
-
-      <div className="absolute right-2.5 top-2.5">
+      <div className="flex max-w-full flex-col items-center gap-1.5">
+        <p className="flex max-w-full items-center gap-1.5 font-display text-sm font-bold text-ink">
+          <span className="truncate">{you ? `${name} (You)` : name}</span>
+          {owner && <Crown className="h-3.5 w-3.5 shrink-0 text-purple-fg" aria-label="Room owner" />}
+        </p>
         {speaking ? (
-          <VoiceBars level={level} />
+          <VoiceBars level={level} size={24} />
         ) : status === "mic-off" ? (
-          <span className="grid h-7 w-7 place-items-center rounded-full bg-secondary/90" title="Microphone off">
-            <MicOff className="h-3.5 w-3.5" />
+          <span className="inline-flex items-center gap-1 rounded-pill bg-coral/15 px-2 py-0.5 text-[11px] font-semibold text-secondary">
+            <MicOff className="h-3 w-3" /> Mic off
           </span>
-        ) : null}
+        ) : status === "offline" ? (
+          <span className="rounded-pill bg-surface-container-high px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant">
+            Not connected
+          </span>
+        ) : (
+          <span className="rounded-pill bg-surface-container-high px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant">
+            Listening
+          </span>
+        )}
       </div>
     </div>
   );
@@ -442,11 +468,12 @@ function SelfTile({
   const { level, speaking } = useAudioLevel(stream);
   return (
     <Tile
-      name={`${name} (You)`}
+      name={name}
+      you
       owner={owner}
       speaking={micOn && speaking}
       level={level}
-      status={micOn ? undefined : "mic-off"}
+      status={micOn ? "listening" : "mic-off"}
     />
   );
 }
@@ -477,6 +504,7 @@ function PeerTile({
       online={online}
       speaking={talking}
       level={stream ? level : undefined}
+      status={online ? "listening" : "offline"}
     />
   );
 }
@@ -489,15 +517,14 @@ function RemoteAudio({ stream }: { stream: MediaStream }) {
   return <audio ref={ref} autoPlay className="hidden" />;
 }
 
-/* -------------------------------- Host bar ------------------------------- */
+/* ------------------------------- Host banner ----------------------------- */
 
 /**
- * The AI host is not a participant, so it doesn't get a tile. It lives in a
- * slim bar above the room: who it is and what it's doing, the current topic,
- * and its latest line with every detail (verbatim message, topic, why it
- * stepped in, what triggered it, when). Earlier lines fold out below.
+ * What the AI host said, in the landing's gradient banner: its exact line, the
+ * topic the room is on now, and why and when it stepped in. Earlier lines fold
+ * out below.
  */
-function HostBar({
+function HostBanner({
   live,
   topic,
   openingTopic,
@@ -518,88 +545,84 @@ function HostBar({
 }) {
   const [showEarlier, setShowEarlier] = useState(false);
   const earlier = history.filter((m) => m.id !== latest?.id);
-  const status = speaking ? "speaking" : live ? "listening" : "waiting to start";
 
   return (
     <section
       aria-label="AI host"
       className={cn(
-        "mx-auto w-full max-w-3xl shrink-0 rounded-2xl bg-stage-raised px-4 py-3 transition-shadow duration-200",
-        speaking && "shadow-[0_0_0_2px_#d2e823]",
+        "mx-auto w-full max-w-4xl shrink-0 rounded-2xl border-2 border-ink bg-gradient-to-r from-amber-200 via-lime to-lime-light p-3.5 transition-all duration-200",
+        speaking ? "-translate-y-0.5 shadow-pop" : "shadow-pop-sm",
       )}
     >
       <div className="flex items-start gap-3">
-        <ParticipantAvatar name={HOST_NAME} isAI size={40} speaking={speaking} className="ring-offset-stage-raised" />
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink-fixed text-lime">
+          <GraduationCap className="h-5 w-5" />
+        </span>
 
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/60">
-            <span className="inline-flex items-center gap-1 font-medium text-white">
-              <Sparkles className="h-3.5 w-3.5 text-lime" /> {HOST_NAME}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-pill bg-white px-2 py-px font-label text-[10px] font-bold uppercase tracking-wider text-purple">
+              {latest ? "AI host · New topic" : "AI host · Opening topic"}
             </span>
-            <span>· {status}</span>
-            {speaking && <VoiceBars size={16} />}
+            <span className="text-[11px] font-bold text-ink-fixed/70">
+              {speaking
+                ? "Speaking…"
+                : latest
+                  ? `${TRIGGER[latest.trigger]} · ${clock(latest.at)}`
+                  : live
+                    ? "Listening"
+                    : "Starts listening when the room starts"}
+            </span>
             {muted && (
-              <span className="inline-flex items-center gap-1" title="Host voice muted">
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-ink-fixed/70" title="Host voice muted">
                 <VolumeX className="h-3.5 w-3.5" /> muted
               </span>
             )}
           </div>
 
-          {/* The topic is the point of the host — make it the hero, and flash it on change. */}
-          <div className="mt-2">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-white/50">
-              {latest ? "Now talking about" : "Opening topic"}
-            </p>
-            <p key={topic} className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="animate-topic-highlight -mx-1.5 inline-block max-w-full truncate rounded-lg px-1.5 py-0.5 text-xl font-semibold leading-tight text-white">
-                {topic}
-              </span>
-              {openingPickedByHost && topic === openingTopic && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-lime/15 px-2 py-0.5 text-[11px] font-medium text-lime">
-                  <Sparkles className="h-3 w-3" /> picked by the host
-                </span>
-              )}
-              {latest && topic !== openingTopic && (
-                <span className="text-xs text-white/40" title={`Started on “${openingTopic}”`}>
-                  · started on “{openingTopic}”
-                </span>
-              )}
-            </p>
-          </div>
-
-          {/* Details — only a host message carries them (the opening topic has none). */}
           {latest ? (
-            <div key={latest.id} className="animate-fade-up mt-2 border-l-2 border-lime/60 pl-3">
-              <p className="text-sm leading-snug text-white/90">“{latest.message}”</p>
-              <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/60">
-                <span className="rounded-full bg-white/10 px-2 py-0.5 text-white/80">{TRIGGER[latest.trigger]}</span>
-                <span>{clock(latest.at)}</span>
-                <span className="text-white/40">·</span>
-                <span className="min-w-0">{latest.reason}</span>
-              </p>
-            </div>
+            <p key={latest.id} className="mt-1.5 font-display text-base font-bold leading-snug text-ink-fixed motion-safe:animate-topic-in sm:text-lg">
+              “{latest.message}”
+            </p>
           ) : (
-            <p className="mt-2 text-sm text-white/60">
+            <p className="mt-1.5 text-sm font-medium text-ink-fixed/80">
               {live
-                ? "Listening to the conversation — I'll jump in with a new topic when it's time."
-                : "I'll start listening when the room starts."}
+                ? "Talk it through. I'll jump in with a new topic when it's time."
+                : "When the room starts, I'll listen in and change the topic when it's time."}
             </p>
           )}
+
+          {/* The topic is the point of the host: it gets the sticker treatment. */}
+          <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-fixed/75">
+            <span>{latest ? "Now talking about" : "Opening topic"}</span>
+            <span
+              key={topic}
+              className="max-w-full truncate rounded bg-white px-1.5 py-0.5 font-display text-sm font-extrabold text-ink-fixed underline decoration-coral decoration-2 underline-offset-2 motion-safe:animate-topic-in"
+            >
+              {topic}
+            </span>
+            {openingPickedByHost && topic === openingTopic && (
+              <span className="inline-flex items-center gap-1 font-semibold">
+                <Sparkles className="h-3 w-3 text-purple" /> picked by the host
+              </span>
+            )}
+            {latest?.reason && <span className="min-w-0">· {latest.reason}</span>}
+          </p>
 
           {earlier.length > 0 && (
             <button
               onClick={() => setShowEarlier((v) => !v)}
-              className="mt-2 text-xs font-medium text-lime hover:underline"
+              className="mt-2 text-xs font-bold text-purple hover:underline"
             >
               {showEarlier ? "Hide earlier topics" : `Earlier topics (${earlier.length})`}
             </button>
           )}
           {showEarlier && earlier.length > 0 && (
-            <ul className="thin-scroll mt-2 max-h-40 space-y-2 overflow-y-auto border-t border-white/10 pt-2">
+            <ul className="thin-scroll mt-2 max-h-40 space-y-2 overflow-y-auto rounded-xl bg-white/70 p-2.5">
               {earlier.map((m) => (
                 <li key={m.id}>
-                  <p className="text-sm text-white/90">“{m.message}”</p>
-                  <p className="text-xs text-white/50">
+                  <p className="text-sm text-ink-fixed">“{m.message}”</p>
+                  <p className="text-xs text-ink-fixed/70">
                     {m.topic} · {TRIGGER[m.trigger]} · {clock(m.at)} · {m.reason}
                   </p>
                 </li>
@@ -623,9 +646,9 @@ function CtrlButton({
   children,
 }: {
   onClick?: () => void;
-  /** Highlighted (Meet blue), e.g. a panel that is open. */
+  /** On, e.g. the mic is live (lime). */
   active?: boolean;
-  /** Turned off (Meet red), e.g. mic off. */
+  /** Off, e.g. mic or host voice muted (coral). */
   off?: boolean;
   disabled?: boolean;
   title: string;
@@ -637,13 +660,14 @@ function CtrlButton({
       disabled={disabled}
       title={title}
       aria-label={title}
+      aria-pressed={active ? true : off ? false : undefined}
       className={cn(
-        "grid h-12 w-12 place-items-center rounded-full transition-colors disabled:opacity-40",
-        off
-          ? "bg-secondary text-white hover:bg-secondary-container"
-          : active
-            ? "bg-lime text-ink hover:bg-lime-light"
-            : "bg-stage-tile text-white hover:bg-stage-hover",
+        "grid h-12 w-12 place-items-center rounded-full border-2 transition-colors disabled:opacity-40",
+        active
+          ? "border-ink bg-lime text-ink-fixed hover:bg-lime-light"
+          : off
+            ? "border-secondary/40 bg-coral/15 text-secondary hover:border-secondary"
+            : "border-ink/15 bg-card text-ink hover:border-ink",
       )}
     >
       {children}
@@ -651,28 +675,20 @@ function CtrlButton({
   );
 }
 
-/** Time left until `scheduledEndAt`; turns red in the last minute. */
+/** Time left until `scheduledEndAt`, as the landing card's clock pill; coral in the last minute. */
 function Countdown({ ms }: { ms: number }) {
   return (
     <span
       title="Time left in this session"
-      className={cn("inline-flex items-center gap-1.5 tabular-nums", ms <= 60_000 && "text-coral")}
+      className={cn(
+        "inline-flex h-9 items-center gap-1 rounded-pill border px-2.5 font-label text-xs font-bold tabular-nums",
+        ms <= 60_000 ? "border-secondary/40 bg-coral/15 text-secondary" : "border-ink/10 bg-card text-on-surface-variant",
+      )}
     >
-      <Timer className="h-4 w-4" />
-      {ms === 0 ? "Ending…" : `${formatCountdown(ms)} left`}
+      <Timer className="h-3.5 w-3.5" />
+      {ms === 0 ? "Ending…" : formatCountdown(ms)}
     </span>
   );
-}
-
-function Clock() {
-  const [now, setNow] = useState<string>("");
-  useEffect(() => {
-    const tick = () => setNow(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-    tick();
-    const id = setInterval(tick, 15_000);
-    return () => clearInterval(id);
-  }, []);
-  return <span>{now}</span>;
 }
 
 /* --------------------------------- Report -------------------------------- */
@@ -707,23 +723,23 @@ function ReportView({
         </p>
         <h1 className="mt-2 font-display text-4xl font-extrabold tracking-tight text-ink">
           How the session{" "}
-          <span className="inline-block -rotate-1 rounded-xl border-2 border-ink bg-lime px-2 shadow-pop-sm">went.</span>
+          <span className="inline-block -rotate-1 rounded-xl border-2 border-ink bg-lime px-2 shadow-pop-sm text-ink-fixed">went.</span>
         </h1>
 
         {!report ? (
-          <p className="mt-6 rounded-2xl border-2 border-ink bg-white p-6 text-on-surface-variant shadow-pop">
+          <p className="mt-6 rounded-2xl border-2 border-ink bg-card p-6 text-on-surface-variant shadow-pop">
             The session ended, but no report was generated (the AI may have been unavailable). Room
             id: <code className="rounded bg-surface-container px-1">{roomId}</code>
           </p>
         ) : (
           <div className="mt-6 space-y-6">
-            <div className="rounded-3xl border-2 border-ink bg-ink p-6 text-cream shadow-pop-lg">
+            <div className="rounded-3xl border-2 border-ink bg-ink-fixed p-6 text-white shadow-pop-lg">
               <p className="font-label text-sm font-bold uppercase tracking-wider text-lime">Summary</p>
               <p className="mt-2 text-lg leading-relaxed">{report.summary}</p>
             </div>
 
             <ReportList
-              icon={<CheckCircle2 className="h-5 w-5 text-purple" />}
+              icon={<CheckCircle2 className="h-5 w-5 text-purple-fg" />}
               title="Highlights"
               items={report.highlights}
               tone="purple"
@@ -742,7 +758,7 @@ function ReportView({
                   {report.topicsExplored.map((t) => (
                     <span
                       key={t}
-                      className="rounded-pill border-2 border-ink bg-white px-3 py-1.5 font-display text-sm font-bold text-ink shadow-pop-sm"
+                      className="rounded-pill border-2 border-ink bg-card px-3 py-1.5 font-display text-sm font-bold text-ink shadow-pop-sm"
                     >
                       {t}
                     </span>

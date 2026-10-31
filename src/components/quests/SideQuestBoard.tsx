@@ -15,7 +15,7 @@ export function SideQuestBoard() {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <span className="inline-flex items-center gap-2 rounded-pill border-2 border-ink bg-white px-3 py-1 font-label text-xs font-bold uppercase tracking-wider text-ink shadow-pop-sm">
+        <span className="inline-flex items-center gap-2 rounded-pill border-2 border-ink bg-card px-3 py-1 font-label text-xs font-bold uppercase tracking-wider text-ink shadow-pop-sm">
           <Target className="h-3.5 w-3.5" aria-hidden /> {open.length} / {MAX_OPEN_QUESTS} open
         </span>
         <p className="flex items-center gap-1.5 text-xs text-on-surface-variant">
@@ -41,9 +41,9 @@ export function SideQuestBoard() {
       </div>
 
       {!isLoading && !isError && open.length === 0 && (
-        <div className="flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-ink/30 bg-white px-6 py-14 text-center">
-          <span className="grid h-12 w-12 place-items-center rounded-full border-2 border-ink bg-lime shadow-pop-sm">
-            <Target className="h-6 w-6 text-ink" />
+        <div className="flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-ink/30 bg-card px-6 py-14 text-center">
+          <span className="grid h-12 w-12 place-items-center rounded-full border-2 border-ink bg-lime shadow-pop-sm text-ink-fixed">
+            <Target className="h-6 w-6 text-ink-fixed" />
           </span>
           <p className="font-display text-lg font-bold text-ink">
             {done.length ? "All caught up!" : "No side quests yet"}
@@ -55,7 +55,7 @@ export function SideQuestBoard() {
           </p>
           <Link
             href="/practice"
-            className="mt-1 inline-flex h-10 items-center gap-1.5 rounded-pill border-2 border-ink bg-lime px-5 font-display text-sm font-bold text-ink shadow-pop-sm transition-all hover:translate-x-px hover:translate-y-px hover:shadow-none"
+            className="mt-1 inline-flex h-10 items-center gap-1.5 rounded-pill border-2 border-ink bg-lime px-5 font-display text-sm font-bold text-ink-fixed shadow-pop-sm transition-all hover:translate-x-px hover:translate-y-px hover:shadow-none"
           >
             Find a room <ArrowRight className="h-4 w-4" />
           </Link>

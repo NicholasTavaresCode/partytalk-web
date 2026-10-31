@@ -4,8 +4,8 @@ import type { Room } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
 const STATUS: Record<Room["status"], { label: string; cls: string; dot: string; live?: boolean }> = {
-  waiting: { label: "Waiting", cls: "bg-purple-light text-purple border-purple/30", dot: "bg-purple" },
-  live: { label: "Live", cls: "bg-secondary/10 text-secondary border-secondary/20", dot: "bg-secondary", live: true },
+  waiting: { label: "Waiting", cls: "bg-purple-light text-purple-fg border-purple/30", dot: "bg-purple" },
+  live: { label: "Live", cls: "bg-secondary/10 text-secondary border-secondary/20", dot: "bg-danger", live: true },
   ended: {
     label: "Ended",
     cls: "bg-surface-container text-on-surface-variant border-outline-variant",
@@ -62,7 +62,7 @@ export function RoomCard({ room, uid }: { room: Room; uid?: string }) {
   return (
     <Link
       href={`/practice/${room.id}`}
-      className="group flex flex-col rounded-3xl border-2 border-ink bg-white p-6 shadow-pop transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-pop-lg"
+      className="group flex flex-col rounded-3xl border-2 border-ink bg-card p-6 shadow-pop transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-pop-lg"
     >
       <div className="flex items-center justify-between">
         <RoomStatusChip status={room.status} />
@@ -74,7 +74,7 @@ export function RoomCard({ room, uid }: { room: Room; uid?: string }) {
         {!isOwner && room.ownerName && <span>Hosted by {room.ownerName}</span>}
         {room.topicPickedByHost && (
           <span className="inline-flex items-center gap-1">
-            <Sparkles className="h-3.5 w-3.5 text-purple" /> picked by the host
+            <Sparkles className="h-3.5 w-3.5 text-purple-fg" /> picked by the host
           </span>
         )}
       </span>
@@ -83,7 +83,7 @@ export function RoomCard({ room, uid }: { room: Room; uid?: string }) {
       <div aria-hidden className="min-h-5 flex-1" />
       <div className="flex items-center justify-between border-t border-ink/10 pt-4">
         <span className="text-xs text-on-surface-variant">{footer}</span>
-        <span className="inline-flex items-center gap-1 rounded-pill bg-lime px-2.5 py-0.5 font-display text-sm font-bold text-ink opacity-0 transition-opacity group-hover:opacity-100">
+        <span className="inline-flex items-center gap-1 rounded-pill bg-lime px-2.5 py-0.5 font-display text-sm font-bold text-ink-fixed opacity-0 transition-opacity group-hover:opacity-100">
           {room.status === "live" ? "Join" : room.status === "ended" ? "Report" : "Open"}{" "}
           <ArrowRight className="h-4 w-4" />
         </span>

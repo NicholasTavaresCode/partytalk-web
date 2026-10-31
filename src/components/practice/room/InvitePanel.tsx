@@ -43,11 +43,11 @@ export function InvitePanel({ room, onClose }: { room: Room; onClose: () => void
   return (
     <aside
       aria-label="Who can join"
-      className="absolute right-3 top-2 z-20 flex max-h-[calc(100%-1rem)] w-[calc(100%-1.5rem)] max-w-sm flex-col rounded-2xl border-2 border-ink bg-white text-on-surface shadow-pop"
+      className="absolute right-3 top-2 z-20 flex max-h-[calc(100%-1rem)] w-[calc(100%-1.5rem)] max-w-sm flex-col rounded-2xl border-2 border-ink bg-card text-on-surface shadow-pop"
     >
       <div className="flex items-center justify-between border-b border-ink/10 px-4 py-3">
         <span className="flex items-center gap-2 font-display text-sm font-bold text-ink">
-          <UserPlus className="h-4 w-4 text-purple" /> Who can join
+          <UserPlus className="h-4 w-4 text-purple-fg" /> Who can join
           <span className="rounded-pill bg-surface-container px-2 py-0.5 font-label text-[11px] text-on-surface-variant">
             {emails.length}/{capacity} spots
           </span>
@@ -86,7 +86,7 @@ export function InvitePanel({ room, onClose }: { room: Room; onClose: () => void
                   />
                   <button
                     onClick={() => copy(room.inviteCode!)}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-pill border-2 border-ink bg-lime px-3 font-display text-xs font-bold text-ink shadow-pop-sm transition-all hover:translate-x-px hover:translate-y-px hover:shadow-none"
+                    className="inline-flex h-9 items-center gap-1.5 rounded-pill border-2 border-ink bg-lime px-3 font-display text-xs font-bold text-ink-fixed shadow-pop-sm transition-all hover:translate-x-px hover:translate-y-px hover:shadow-none"
                   >
                     {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                     {copied ? "Copied" : "Copy"}
@@ -99,7 +99,7 @@ export function InvitePanel({ room, onClose }: { room: Room; onClose: () => void
                   <button
                     onClick={() => invites.createLink.mutate()}
                     disabled={invites.createLink.isPending}
-                    className="inline-flex items-center gap-1 text-purple hover:underline disabled:opacity-50"
+                    className="inline-flex items-center gap-1 text-purple-fg hover:underline disabled:opacity-50"
                   >
                     <RefreshCw className="h-3 w-3" /> New link
                   </button>
@@ -119,7 +119,7 @@ export function InvitePanel({ room, onClose }: { room: Room; onClose: () => void
               <button
                 onClick={() => invites.createLink.mutate()}
                 disabled={invites.createLink.isPending}
-                className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-pill border-2 border-ink bg-white px-3 font-display text-sm font-bold text-ink transition-colors hover:bg-lime/30 disabled:opacity-50"
+                className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-pill border-2 border-ink bg-card px-3 font-display text-sm font-bold text-ink transition-colors hover:bg-lime/30 disabled:opacity-50"
               >
                 {invites.createLink.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />

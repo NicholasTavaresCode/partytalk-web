@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bot, Timer } from "lucide-react";
+import { GraduationCap, Timer } from "lucide-react";
 import { ParticipantAvatar } from "@/components/practice/ParticipantAvatar";
 import { cn } from "@/lib/cn";
 
-const PEOPLE = ["Lucas", "Mei", "Omar"];
+const PEOPLE = ["Lucas", "Mei", "Omar", "Sofia"];
 /** Who talks on each tick — not round-robin, so it reads like a conversation. */
-const SPEAKERS = [0, 2, 1, 2, 0, 1];
+const SPEAKERS = [0, 2, 1, 3, 2, 0, 3, 1];
 
 /** Lines the AI host says when it moves the room on — always somewhere unrelated. */
 const PIVOTS = [
@@ -79,7 +79,7 @@ export function RoomPreview({ className }: { className?: string }) {
         <div className="rounded-2xl border-2 border-ink bg-gradient-to-r from-amber-200 via-lime to-lime-light p-3 shadow-pop-sm">
           <div className="flex items-start gap-2.5">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ink text-lime">
-              <Bot className="h-4 w-4" />
+              <GraduationCap className="h-4 w-4" />
             </span>
             <div key={pivotIndex} className="min-w-0 space-y-1 motion-safe:animate-topic-in">
               <div className="flex flex-wrap items-center gap-2">
@@ -99,7 +99,7 @@ export function RoomPreview({ className }: { className?: string }) {
           </div>
         </div>
 
-        {/* Speakers + the AI host's own tile */}
+        {/* Speakers (the host is the banner above, never a tile) */}
         <div className="grid grid-cols-2 gap-2.5">
           {PEOPLE.map((name, i) => {
             const speaking = i === speaker;
@@ -125,15 +125,6 @@ export function RoomPreview({ className }: { className?: string }) {
               </div>
             );
           })}
-          <div className="flex items-center gap-2.5 rounded-xl border-2 border-ink bg-purple p-2.5 text-white">
-            <span className="grid h-[38px] w-[38px] shrink-0 place-items-center rounded-full bg-lime font-display text-xs font-extrabold text-ink">
-              AI
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-display text-xs font-bold">AI host</p>
-              <span className="text-[10px] font-bold text-lime">Listening in</span>
-            </div>
-          </div>
         </div>
 
         {/* What everyone gets when the room ends */}

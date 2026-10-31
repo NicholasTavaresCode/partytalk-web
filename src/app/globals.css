@@ -3,8 +3,61 @@
 @tailwind utilities;
 
 @layer base {
+  /*
+   * Theme colours as RGB channels (see `themed` in tailwind.config.ts). Light is the
+   * default everywhere; `.dark` is applied only around signed-in screens (ThemeScope),
+   * so the landing and sign-in pages always stay light.
+   */
   :root {
     color-scheme: light;
+    --ink: 20 21 23;
+    --cream: 250 247 240;
+    --card: 255 255 255;
+    --pop: 20 21 23;
+    --primary-container: 44 46 51;
+    --purple-light: 234 221 255;
+    --purple-fg: 121 36 255;
+    --secondary: 201 53 15;
+    --secondary-container: 168 42 8;
+    --tertiary: 89 100 0;
+    --on-tertiary-fixed-variant: 67 75 0;
+    --error: 186 26 26;
+    --error-container: 255 218 214;
+    --on-error-container: 147 0 10;
+    --surface-dim: 220 215 203;
+    --surface-container-low: 244 240 230;
+    --surface-container: 238 234 223;
+    --surface-container-high: 232 227 215;
+    --surface-container-highest: 226 221 208;
+    --on-surface-variant: 75 76 69;
+    --outline: 120 120 109;
+    --outline-variant: 217 212 199;
+  }
+
+  .dark {
+    color-scheme: dark;
+    --ink: 236 232 222;
+    --cream: 19 20 23;
+    --card: 29 30 34;
+    --pop: 0 0 0;
+    --primary-container: 217 213 202;
+    --purple-light: 44 33 80;
+    --purple-fg: 169 139 255;
+    --secondary: 255 125 92;
+    --secondary-container: 255 160 135;
+    --tertiary: 200 220 44;
+    --on-tertiary-fixed-variant: 210 232 35;
+    --error: 255 138 122;
+    --error-container: 61 25 21;
+    --on-error-container: 255 180 170;
+    --surface-dim: 14 15 17;
+    --surface-container-low: 25 26 30;
+    --surface-container: 34 35 40;
+    --surface-container-high: 42 43 49;
+    --surface-container-highest: 49 50 56;
+    --on-surface-variant: 180 177 167;
+    --outline: 139 137 127;
+    --outline-variant: 59 60 66;
   }
 
   html {
@@ -30,14 +83,14 @@
     height: 8px;
   }
   .thin-scroll::-webkit-scrollbar-track {
-    background: #f4f0e6;
+    background: rgb(var(--surface-container-low));
   }
   .thin-scroll::-webkit-scrollbar-thumb {
-    background: #d9d4c7;
+    background: rgb(var(--outline-variant));
     border-radius: 4px;
   }
   .thin-scroll::-webkit-scrollbar-thumb:hover {
-    background: #78786d;
+    background: rgb(var(--outline));
   }
 }
 
@@ -52,7 +105,7 @@
 
   /* Faint ink dot texture for cream hero sections, fading out toward the edges */
   .bg-dots {
-    background-image: radial-gradient(rgba(20, 21, 23, 0.09) 1px, transparent 1px);
+    background-image: radial-gradient(rgb(var(--ink) / 0.09) 1px, transparent 1px);
     background-size: 22px 22px;
     mask-image: radial-gradient(ellipse 75% 65% at 50% 45%, black 25%, transparent 80%);
   }

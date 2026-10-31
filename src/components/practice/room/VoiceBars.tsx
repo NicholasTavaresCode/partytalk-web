@@ -22,7 +22,7 @@ export function VoiceBars({
     <span
       role="img"
       aria-label="Speaking"
-      className={cn("grid place-items-center rounded-full bg-lime text-ink", className)}
+      className={cn("grid place-items-center rounded-full bg-lime text-ink-fixed", className)}
       style={{ width: size, height: size }}
     >
       <span className="flex items-center gap-[2px]" style={{ height: size * 0.45 }}>

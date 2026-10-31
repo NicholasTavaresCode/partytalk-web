@@ -21,7 +21,7 @@ export default function QuestsPage() {
             <Container className="py-10">
               <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink sm:text-5xl">
                 Your side{" "}
-                <span className="inline-block -rotate-1 rounded-xl border-2 border-ink bg-lime px-2 shadow-pop-sm">
+                <span className="inline-block -rotate-1 rounded-xl border-2 border-ink bg-lime px-2 shadow-pop-sm text-ink-fixed">
                   quests.
                 </span>
               </h1>

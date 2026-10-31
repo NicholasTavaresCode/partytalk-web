@@ -55,8 +55,8 @@ export function RoomsBrowser() {
               className={cn(
                 "rounded-pill border-2 px-3.5 py-1.5 font-display text-sm font-bold transition-colors",
                 filter === f.value
-                  ? "border-ink bg-ink text-lime"
-                  : "border-ink/15 bg-white text-on-surface-variant hover:border-ink hover:text-ink",
+                  ? "border-ink bg-ink-fixed text-lime"
+                  : "border-ink/15 bg-card text-on-surface-variant hover:border-ink hover:text-ink",
               )}
             >
               {f.label}
@@ -65,7 +65,7 @@ export function RoomsBrowser() {
         </div>
         <button
           onClick={() => setCreating(true)}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-pill border-2 border-ink bg-lime px-5 font-display text-[15px] font-bold text-ink shadow-pop-sm transition-all hover:translate-x-px hover:translate-y-px hover:bg-lime-light hover:shadow-none"
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-pill border-2 border-ink bg-lime px-5 font-display text-[15px] font-bold text-ink-fixed shadow-pop-sm transition-all hover:translate-x-px hover:translate-y-px hover:bg-lime-light hover:shadow-none"
         >
           <Plus className="h-5 w-5" /> Create room
         </button>
@@ -106,9 +106,9 @@ export function RoomsBrowser() {
           {!isLoading && !showingEnded && (
             <button
               onClick={() => setCreating(true)}
-              className="flex min-h-52 flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-ink/30 bg-surface-container-low/50 p-6 text-center transition-colors hover:border-ink hover:bg-white"
+              className="flex min-h-52 flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-ink/30 bg-surface-container-low/50 p-6 text-center transition-colors hover:border-ink hover:bg-card"
             >
-              <span className="grid h-12 w-12 place-items-center rounded-full border-2 border-ink bg-lime text-ink shadow-pop-sm">
+              <span className="grid h-12 w-12 place-items-center rounded-full border-2 border-ink bg-lime text-ink-fixed shadow-pop-sm">
                 <Plus className="h-6 w-6" />
               </span>
               <p className="font-display font-bold text-ink">Start a new room</p>
@@ -121,8 +121,8 @@ export function RoomsBrowser() {
       </section>
 
       {empty && (
-        <div className="mt-4 flex flex-col items-center gap-2 rounded-3xl border-2 border-ink/15 bg-white py-16 text-center">
-          <Radio className="h-6 w-6 text-purple" />
+        <div className="mt-4 flex flex-col items-center gap-2 rounded-3xl border-2 border-ink/15 bg-card py-16 text-center">
+          <Radio className="h-6 w-6 text-purple-fg" />
           <p className="font-semibold text-on-surface">
             {showingEnded
               ? "No ended rooms yet"
@@ -208,7 +208,7 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 grid place-items-center bg-ink-fixed/50 p-4 backdrop-blur-sm"
       onClick={() => {
         if (!dirty) onClose();
       }}
@@ -216,7 +216,7 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
       <form
         onClick={(e) => e.stopPropagation()}
         onSubmit={submit}
-        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col rounded-3xl border-2 border-ink bg-white shadow-pop-lg"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col rounded-3xl border-2 border-ink bg-card shadow-pop-lg"
       >
         <div className="flex items-center justify-between border-b border-ink/10 px-7 pb-4 pt-6">
           <h2 className="font-display text-xl font-extrabold tracking-tight text-ink">Create a room</h2>
@@ -229,7 +229,7 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
         <div className="thin-scroll min-h-0 flex-1 overflow-y-auto px-7 pb-5 pt-5">
           <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border-2 border-ink/15 px-3.5 py-3">
             <span className="flex items-center gap-2 text-sm font-semibold text-on-surface">
-              <Sparkles className="h-4 w-4 text-purple" /> Let the AI host pick the opening topic
+              <Sparkles className="h-4 w-4 text-purple-fg" /> Let the AI host pick the opening topic
             </span>
             <input
               type="checkbox"
@@ -260,7 +260,7 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
                 placeholder="e.g. Weekend plans, first jobs, favourite films…"
-                className="mt-1.5 h-11 w-full rounded-xl border-2 border-ink/15 bg-white px-3 outline-none transition-colors focus:border-ink"
+                className="mt-1.5 h-11 w-full rounded-xl border-2 border-ink/15 bg-card px-3 outline-none transition-colors focus:border-ink"
                 maxLength={120}
                 autoFocus
               />
@@ -279,7 +279,7 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
                     "h-9 px-3",
                     "rounded-pill border-2 font-display text-sm font-bold transition-colors",
                     durationMinutes === n
-                      ? "border-ink bg-ink text-lime"
+                      ? "border-ink bg-ink-fixed text-lime"
                       : "border-ink/15 text-on-surface-variant hover:border-ink/40",
                   )}
                 >
@@ -304,7 +304,7 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
                     "h-9 w-9",
                     "rounded-pill border-2 font-display text-sm font-bold transition-colors",
                     maxParticipants === n
-                      ? "border-ink bg-ink text-lime"
+                      ? "border-ink bg-ink-fixed text-lime"
                       : "border-ink/15 text-on-surface-variant hover:border-ink/40",
                   )}
                 >
@@ -327,7 +327,7 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
 
           <div className="mt-5 flex items-center justify-between gap-3">
             <label htmlFor="invite-email" className="flex items-center gap-1.5 text-sm font-semibold text-on-surface">
-              <UserPlus className="h-4 w-4 text-purple" /> Invite people
+              <UserPlus className="h-4 w-4 text-purple-fg" /> Invite people
             </label>
             {invited > 0 && (
               <span className="flex items-center gap-2 text-xs text-on-surface-variant">
@@ -335,7 +335,7 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
                 {invited > 1 && (
                   <>
                     <span aria-hidden>·</span>
-                    <button type="button" onClick={invites.clear} className="font-semibold text-purple hover:underline">
+                    <button type="button" onClick={invites.clear} className="font-semibold text-purple-fg hover:underline">
                       Remove all
                     </button>
                   </>
@@ -360,7 +360,7 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
                 >
                   {create.isPending ? "Trying…" : "Try again"}
                 </button>
-                <button type="button" onClick={typeMyOwn} className="h-9 rounded-pill border-2 border-ink bg-white font-display font-bold text-ink transition-colors hover:bg-lime/30 px-4 text-sm">
+                <button type="button" onClick={typeMyOwn} className="h-9 rounded-pill border-2 border-ink bg-card font-display font-bold text-ink transition-colors hover:bg-lime/30 px-4 text-sm">
                   Type one myself
                 </button>
               </div>
@@ -373,13 +373,13 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="flex justify-end gap-3 border-t border-ink/10 px-7 py-4">
-          <button type="button" onClick={onClose} className="h-11 rounded-pill border-2 border-ink bg-white font-display font-bold text-ink transition-colors hover:bg-lime/30 px-5">
+          <button type="button" onClick={onClose} className="h-11 rounded-pill border-2 border-ink bg-card font-display font-bold text-ink transition-colors hover:bg-lime/30 px-5">
             Cancel
           </button>
           <button
             type="submit"
             disabled={create.isPending || !input || overInvited}
-            className="h-11 rounded-pill border-2 border-ink bg-lime px-6 font-display font-bold text-ink shadow-pop-sm transition-all hover:translate-x-px hover:translate-y-px hover:bg-lime-light hover:shadow-none disabled:opacity-50"
+            className="h-11 rounded-pill border-2 border-ink bg-lime px-6 font-display font-bold text-ink-fixed shadow-pop-sm transition-all hover:translate-x-px hover:translate-y-px hover:bg-lime-light hover:shadow-none disabled:opacity-50"
           >
             {create.isPending ? "Creating…" : invited ? `Create & invite ${invited}` : "Create & enter"}
           </button>
