@@ -14,7 +14,6 @@ export interface User {
   email: string;
   displayName: string;
   englishLevel: EnglishLevel;
-  targetIeltsBand?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -22,13 +21,16 @@ export interface User {
 export interface UpsertProfile {
   displayName: string;
   englishLevel: EnglishLevel;
-  targetIeltsBand?: number;
 }
 
 /* ================================= Rooms ================================= */
 
 export type RoomStatus = "waiting" | "live" | "ended";
-export type SuggestionTrigger = "volume" | "silence" | "manual";
+
+/** The only session lengths the API accepts (minutes). Default 30. */
+export const ROOM_DURATIONS = [10, 15, 30, 45, 60] as const;
+export type RoomDuration = (typeof ROOM_DURATIONS)[number];
+export type HostMessageTrigger = "volume" | "silence" | "manual";
 
 export interface RoomReport {
   summary: string;
@@ -40,35 +42,40 @@ export interface RoomReport {
 
 export interface Room {
   id: string;
+  /** The OPENING topic only. The current topic is the `topic` of the latest `HostMessage`. */
   topic: string;
-  facilitatorPersona: string;
+  /** True when the AI host chose the opening topic (`hostPicksTopic` at creation). */
+  topicPickedByHost?: boolean;
   status: RoomStatus;
   ownerId: string;
   participantIds: string[];
   maxParticipants: number;
-  /** Lowercased emails allowed in (rooms are invite-only). Present only for the owner. */
-  invitedEmails?: string[];
-  /** Invite-link secret (`/practice/{id}?invite={code}`); `null` when off. Owner only. */
-  inviteCode?: string | null;
+  /** Session length in minutes (one of ROOM_DURATIONS). */
+  durationMinutes: number;
+  /** Set when the owner starts the room. */
+  startedAt?: string;
+  /** startedAt + durationMinutes. The backend ends the session itself at this time and emits `sessionEnded`. */
+  scheduledEndAt?: string;
   report?: RoomReport;
   createdAt: string;
   updatedAt: string;
   endedAt?: string;
 }
 
-/** `GET /rooms/:id/ice-servers` — passed straight to `new RTCPeerConnection`. */
-export interface IceServers {
-  iceServers: RTCIceServer[];
-  /** Seconds until the TURN credential expires (re-fetched on every reconnect). */
-  ttlSeconds: number;
+interface CreateRoomOptions {
+  maxParticipants?: number;
+  /** 10 | 15 | 30 | 45 | 60; the API defaults to 30. */
+  durationMinutes?: RoomDuration;
 }
 
-export interface CreateRoomInput {
-  topic: string;
-  facilitatorPersona?: string;
-  maxParticipants?: number;
-  invitedEmails?: string[];
-}
+/**
+ * Either the creator types the opening topic, or `hostPicksTopic: true` asks the
+ * AI host to choose one — in which case `topic` must be omitted (the API ignores
+ * it) and the call can fail with 503 if the host can't pick right now.
+ */
+export type CreateRoomInput =
+  | (CreateRoomOptions & { topic: string; hostPicksTopic?: false })
+  | (CreateRoomOptions & { hostPicksTopic: true; topic?: undefined });
 
 export interface TranscriptSegment {
   id: string;
@@ -79,12 +86,21 @@ export interface TranscriptSegment {
   at: string;
 }
 
-export interface TopicSuggestion {
+/**
+ * A line the AI host spoke to move the group on to a new topic. Arrives over the
+ * socket as `hostMessage` and from `POST /rooms/:id/change-topic`, which returns
+ * the same object it broadcasts — so always dedupe by `id`.
+ */
+export interface HostMessage {
   id: string;
   roomId: string;
+  /** The exact sentence the host says. */
+  message: string;
+  /** The new topic the group is now on. */
   topic: string;
-  rationale: string;
-  trigger: SuggestionTrigger;
+  /** Short note on why the host stepped in now. */
+  reason: string;
+  trigger: HostMessageTrigger;
   at: string;
 }
 
@@ -113,9 +129,17 @@ export interface SocketErrorEvent {
  * disconnects.
  */
 export interface ServerToClientEvents {
+  /**
+   * The full Room, sent to everyone already in the socket room whenever someone
+   * joins/leaves over REST or the owner starts it. Replaces local room state
+   * (participants, status, scheduledEndAt). The actor gets the same Room in the
+   * REST response instead, so both sources are applied identically.
+   */
+  roomUpdated: (room: Room) => void;
+  /** A socket subscribed/unsubscribed — NOT membership; the member list is `Room.participantIds`. */
   presence: (e: PresenceEvent) => void;
   transcript: (s: TranscriptSegment) => void;
-  topicSuggested: (s: TopicSuggestion) => void;
+  hostMessage: (m: HostMessage) => void;
   sessionEnded: (e: SessionEndedEvent) => void;
   error: (e: SocketErrorEvent) => void;
   "webrtc:peers": (e: { uids: string[] }) => void;
@@ -143,85 +167,4 @@ export interface ClientToServerEvents {
   "webrtc:offer": (p: { roomId: string; toUid: string; sdp: RTCSessionDescriptionInit }) => void;
   "webrtc:answer": (p: { roomId: string; toUid: string; sdp: RTCSessionDescriptionInit }) => void;
   "webrtc:ice": (p: { roomId: string; toUid: string; candidate: RTCIceCandidateInit }) => void;
-}
-
-/* ============================ IELTS (parked) ============================= */
-
-export type IeltsModuleId = "listening" | "reading" | "writing" | "speaking";
-
-export interface IeltsModuleInfo {
-  id: IeltsModuleId;
-  title: string;
-  duration: string;
-  questions: string;
-  blurb: string;
-  skills: string[];
-}
-
-export interface ListeningOption {
-  value: string;
-  label: string;
-}
-
-export interface ListeningMcq {
-  n: number;
-  prompt: string;
-  options: ListeningOption[];
-}
-
-export interface ListeningTest {
-  part: number;
-  instructions: string;
-  totalQuestions: number;
-  currentQuestion: number;
-  answered: number[];
-  audio: { title: string; duration: string; note: string };
-  form: {
-    title: string;
-    fields: { n: number; label: string; placeholder: string }[];
-    table: { columns: [string, string]; rows: { n: number; item: string; placeholder: string }[] };
-  };
-  mcqs: ListeningMcq[];
-}
-
-export interface ReadingTest {
-  passageNumber: number;
-  passageTitle: string;
-  paragraphs: { label: string; text: string }[];
-  questionRange: string;
-  headingInstructions: string;
-  headings: { numeral: string; text: string }[];
-  matches: { n: number; paragraph: string }[];
-  totalQuestions: number;
-  currentQuestion: number;
-}
-
-export interface WritingTask {
-  id: 1 | 2;
-  label: string;
-  minutes: number;
-  minWords: number;
-  prompt: string;
-  emphasis?: string;
-  chart?: {
-    caption: string;
-    unit: string;
-    months: string[];
-    series: { name: string; color: string; values: number[] }[];
-  };
-}
-
-export interface SpeakingPart {
-  id: number;
-  label: string;
-  title: string;
-  current: { n: number; text: string };
-  questions: string[];
-  cueCard?: { task: string; bullets: string[] };
-}
-
-export interface SpeakingTest {
-  examiner: string;
-  parts: SpeakingPart[];
-  activePart: number;
 }

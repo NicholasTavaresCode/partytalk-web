@@ -4,69 +4,80 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft,
   Mic,
   MicOff,
-  Sparkles,
   PhoneOff,
   Play,
-  Radio,
   Crown,
   Lightbulb,
   CheckCircle2,
   Loader2,
-  VideoOff,
-  UserPlus,
+  Shuffle,
+  Volume2,
+  VolumeX,
+  Users,
+  Sparkles,
+  Timer,
 } from "lucide-react";
-import { useAuth } from "@/components/auth/AuthProvider";
+import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/apiClient";
-import { useMe, useRoom, useRoomLifecycle } from "@/lib/queries";
+import { formatCountdown, useCountdown } from "@/lib/countdown";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { queryKeys, useMe, useRoom, useRoomLifecycle } from "@/lib/queries";
 import { useRoomSocket } from "@/lib/useRoomSocket";
 import { useSpeechRecognition } from "@/lib/useSpeechRecognition";
 import { useVoiceMesh } from "@/lib/useVoiceMesh";
+import { useHostVoice } from "@/lib/hostVoice";
+import { useAudioLevel, useRecentSpeakers } from "@/lib/useSpeaking";
+import { currentTopic } from "@/lib/roomHistory";
 import { Logo } from "@/components/brand/Logo";
 import { ParticipantAvatar } from "@/components/practice/ParticipantAvatar";
 import { LoadingScreen } from "@/components/app/LoadingScreen";
-import { AiHostPanel } from "./AiHostPanel";
-import { InvitePanel } from "./InvitePanel";
-import { RoomAccessScreen } from "./RoomAccessScreen";
+import { VoiceBars } from "@/components/practice/room/VoiceBars";
 import { cn } from "@/lib/cn";
-import type { RoomReport, TopicSuggestion } from "@/lib/types";
+import type { HostMessage, HostMessageTrigger, RoomReport } from "@/lib/types";
 
-/**
- * The live room. Rooms are invite-only: the API answers 403 until the signed-in
- * account is invited, so `inviteCode` (from an owner's invite link) is redeemed
- * by joining; without one the visitor gets the "invite-only" screen.
- */
-export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteCode?: string }) {
-  const router = useRouter();
+const HOST_NAME = "AI Host";
+
+const TRIGGER: Record<HostMessageTrigger, string> = {
+  volume: "Topic covered",
+  silence: "Room went quiet",
+  manual: "On request",
+};
+
+const clock = (iso: string) =>
+  new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+export function RoomExperience({ roomId }: { roomId: string }) {
   const { user } = useAuth();
   const { data: me } = useMe();
-  const { data: room, isLoading, error: roomError } = useRoom(roomId);
-  const { join, leave, start, end, suggest } = useRoomLifecycle(roomId);
-  const roomErrorStatus = roomError instanceof ApiError ? roomError.status : undefined;
-  const isParticipant = !!user && !!room?.participantIds.includes(user.uid);
-  const rt = useRoomSocket(roomId, isParticipant);
+  const { data: room, isLoading } = useRoom(roomId);
+  const { join, start, end, changeTopic } = useRoomLifecycle(roomId);
+  // Only open the socket once we're actually in the room (see useRoomSocket).
+  const isParticipant = !!room && !!user && room.participantIds.includes(user.uid);
+  const rt = useRoomSocket(roomId, { enabled: isParticipant });
+  const live = room?.status === "live";
 
-  const [extra, setExtra] = useState<TopicSuggestion[]>([]);
-  const [invitesOpen, setInvitesOpen] = useState(false);
-  // The AI host panel opens only on demand; a new topic while it's closed shows
-  // as a dot on its button (unread = newer than the last one the user saw).
-  const [aiOpen, setAiOpen] = useState(false);
-  const [seenTopicId, setSeenTopicId] = useState<string | undefined>(undefined);
-  // Speech-to-text isn't shown to anyone; it only feeds the AI host.
-  const stt = useSpeechRecognition(rt.sendTranscript);
-  const voice = useVoiceMesh({
-    socket: rt.socket,
-    roomId,
-    enabled: room?.status === "live" && isParticipant && !rt.removed,
-    selfUid: user?.uid,
+  const [hostMuted, setHostMuted] = useState(false);
+  // The mic can be on before the room starts (like Meet's lobby); words only go
+  // out once the session is live and the host is listening.
+  const stt = useSpeechRecognition((text) => {
+    if (live) rt.sendTranscript(text);
   });
+  const voice = useVoiceMesh({ socket: rt.socket, roomId, enabled: live });
+  const hostVoice = useHostVoice(rt.hostMessages, hostMuted);
+  const recent = useRecentSpeakers(rt.segments);
+  const qc = useQueryClient();
+  const remaining = useCountdown(room?.status === "live" ? room.scheduledEndAt : undefined);
 
-  // Revoked mid-session: stop listening right away (the server already ignores us).
+  // The backend ends the session at scheduledEndAt and emits `sessionEnded`, which is
+  // handled like an owner-initiated end. If that event is missed (e.g. a reconnect),
+  // refetch once the clock runs out so we still land on the report.
   useEffect(() => {
-    if (rt.removed) stt.stop();
-  }, [rt.removed, stt]);
+    if (remaining === 0 && !rt.ended) {
+      void qc.invalidateQueries({ queryKey: queryKeys.room(roomId) });
+    }
+  }, [remaining, rt.ended, qc, roomId]);
 
   // Take a seat once (idempotent server-side). Invitees just join; a visitor with
   // an invite link redeems it — the room itself stays 403 until they do.
@@ -86,11 +97,15 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
     });
   }, [room, roomErrorStatus, user, join, inviteCode, router, roomId]);
 
-  const suggestions = useMemo(() => {
-    const byId = new Map<string, TopicSuggestion>();
-    [...rt.suggestions, ...extra].forEach((s) => byId.set(s.id, s));
-    return [...byId.values()].sort((a, b) => b.at.localeCompare(a.at));
-  }, [rt.suggestions, extra]);
+  const remoteByUid = useMemo(
+    () => new Map(voice.remoteStreams.map((r) => [r.uid, r.stream])),
+    [voice.remoteStreams],
+  );
+  // Newest first for the host bar's history; already deduped by id.
+  const hostHistory = useMemo(
+    () => [...rt.hostMessages].sort((a, b) => b.at.localeCompare(a.at)),
+    [rt.hostMessages],
+  );
 
   if (rt.removed) return <RoomAccessScreen reason="removed" />;
   if (roomErrorStatus === 404) return <RoomAccessScreen reason="not-found" />;
@@ -116,110 +131,182 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
   if (isEnded) return <ReportView roomId={roomId} topic={room.topic} report={report} />;
 
   const selfName = me?.displayName ?? user?.displayName ?? "You";
-  const live = room.status === "live";
+  // `room.topic` is only the opening topic; the host's latest line sets the current one.
+  const topic = currentTopic(rt.hostMessages, room.topic);
 
   return (
     <div className="flex h-screen flex-col bg-[#202124] text-white">
-      {/* Top bar */}
-      <header className="flex h-14 shrink-0 items-center justify-between px-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <Logo className="h-7 w-7" />
-          <div className="min-w-0">
-            <p className="truncate text-sm font-bold leading-tight">{room.topic}</p>
-            <p className="text-[11px] leading-tight text-white/50">{room.facilitatorPersona}</p>
+      {/* Stage */}
+      <main className="relative flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4">
+        {/* The host is not a participant: it sits above the room, listening, and
+            speaks up through this bar when it changes the topic. */}
+        <HostBar
+          live={live}
+          topic={topic}
+          openingTopic={room.topic}
+          openingPickedByHost={room.topicPickedByHost === true}
+          latest={rt.latestHostMessage}
+          history={hostHistory}
+          speaking={hostVoice.speaking}
+          muted={hostMuted}
+        />
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div
+            className={cn(
+              "mx-auto grid h-full max-w-6xl auto-rows-fr place-content-center gap-3",
+              gridColsClass(room.participantIds.length),
+            )}
+          >
+            {room.participantIds.map((uid) =>
+              uid === user?.uid ? (
+                <SelfTile
+                  key={uid}
+                  name={selfName}
+                  owner={uid === room.ownerId}
+                  stream={stt.listening ? voice.localStream : null}
+                  micOn={stt.listening}
+                />
+              ) : (
+                <PeerTile
+                  key={uid}
+                  name={rt.presence[uid] ?? "Guest"}
+                  owner={uid === room.ownerId}
+                  online={rt.presence[uid] !== undefined}
+                  stream={remoteByUid.get(uid) ?? null}
+                  recentlySpoke={recent.has(uid)}
+                />
+              ),
+            )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {live ? (
-            <span className="inline-flex items-center gap-1.5 rounded-pill bg-secondary/20 px-2.5 py-1 text-xs font-bold text-secondary-fixed-dim">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-secondary-fixed-dim" /> Live
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-pill bg-white/10 px-2.5 py-1 text-xs font-bold text-white/70">
-              Waiting to start
-            </span>
-          )}
-          <ConnectionIndicator connection={rt.connection} onReconnect={rt.reconnect} />
-          <VoiceIndicator voice={voice} live={live} />
-          {isOwner && (
-            <button
-              onClick={() => {
-                setInvitesOpen((v) => !v);
-                setAiOpen(false);
-              }}
-              aria-expanded={invitesOpen}
-              className="inline-flex items-center gap-1.5 rounded-pill bg-white/10 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-white/20"
-            >
-              <UserPlus className="h-3.5 w-3.5" /> Invite
-              {!!room.invitedEmails?.length && (
-                <span className="text-white/60">{room.invitedEmails.length}</span>
-              )}
-            </button>
-          )}
-        </div>
-      </header>
-
-      {/* Stage — participant tiles with the AI host pinned in the center */}
-      <main className="relative min-h-0 flex-1">
-        <ParticipantGrid
-          room={room}
-          presence={rt.presence}
-          selfUid={user?.uid}
-          selfName={selfName}
-          selfSpeaking={stt.listening}
-          selfMuted={voice.muted}
-          panelOpen={aiOpen}
-        />
-
-        <AiHostPanel
-          open={aiOpen}
-          onClose={() => {
-            setSeenTopicId(suggestions[0]?.id);
-            setAiOpen(false);
-          }}
-          seedTopic={room.topic}
-          persona={room.facilitatorPersona}
-          live={live}
-          suggestions={suggestions}
-          // Only the host may ask; the API broadcasts the result to everyone, and
-          // the requester also adds it right away in case its socket is down.
-          onSuggest={
-            isOwner
-              ? () => suggest.mutate(undefined, { onSuccess: (s) => setExtra((p) => [...p, s]) })
-              : undefined
-          }
-          suggesting={suggest.isPending}
-          suggestError={suggest.isError ? "Couldn't get a topic. Try again in a moment." : undefined}
-        />
-
-        {isOwner && invitesOpen && (
-          <InvitePanel room={room} onClose={() => setInvitesOpen(false)} />
-        )}
+        {start.isError && !(start.error instanceof ApiError && start.error.status === 409) ? (
+          <p className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[#ea4335] px-4 py-2 text-sm">
+            Couldn&apos;t start: {start.error.message}
+          </p>
+        ) : rt.error ? (
+          <p className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[#ea4335] px-4 py-2 text-sm">
+            {rt.error}
+          </p>
+        ) : isParticipant && !rt.connected ? (
+          <p className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[#3c4043] px-4 py-2 text-sm text-white/80">
+            Connecting to the room…
+          </p>
+        ) : null}
       </main>
 
-      {/* Bottom control bar (Meet-style) */}
-      <ControlBar
-        live={live}
-        isOwner={isOwner}
-        stt={stt}
-        voice={voice}
-        connected={rt.connected}
-        onStart={() => start.mutate()}
-        starting={start.isPending}
-        onEnd={() => end.mutate()}
-        ending={end.isPending}
-        // Give the seat back (rooms cap at 5), then go — even if the call fails.
-        onLeave={() => leave.mutate(undefined, { onSettled: () => router.push("/practice") })}
-        leaving={leave.isPending}
-        aiOpen={aiOpen}
-        aiUnread={!aiOpen && !!suggestions[0] && suggestions[0].id !== seenTopicId}
-        onToggleAi={() => {
-          setSeenTopicId(suggestions[0]?.id);
-          setAiOpen((v) => !v);
-          setInvitesOpen(false);
-        }}
-      />
+      {/* Bottom bar */}
+      <footer className="grid h-20 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 px-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <Logo className="hidden h-6 w-6 sm:block" />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">
+              {live && remaining !== null ? <Countdown ms={remaining} /> : <Clock />}
+              <span className="mx-2 text-white/40">|</span>
+              {live ? "Live" : "Waiting to start"}
+            </p>
+            <p className="truncate text-xs text-white/50">
+              {room.durationMinutes != null && <>{room.durationMinutes} min session</>}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 sm:gap-3">
+          {stt.supported ? (
+            <CtrlButton
+              title={
+                stt.listening
+                  ? "Turn off microphone"
+                  : !live
+                    ? "Turn on microphone (the AI host starts listening when the room starts)"
+                    : !rt.connected
+                      ? "Turn on microphone (reconnecting to the room…)"
+                      : "Turn on microphone"
+              }
+              off={!stt.listening}
+              onClick={() => (stt.listening ? stt.stop() : stt.start())}
+            >
+              {stt.listening ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+            </CtrlButton>
+          ) : (
+            <CtrlButton title="Speech-to-text isn't available in this browser — use Chrome or Edge" off disabled>
+              <MicOff className="h-5 w-5" />
+            </CtrlButton>
+          )}
+
+          <CtrlButton
+            title={
+              !hostVoice.supported
+                ? "Host voice isn't available in this browser"
+                : hostMuted
+                  ? "Unmute AI host"
+                  : "Mute AI host"
+            }
+            off={hostMuted}
+            disabled={!hostVoice.supported}
+            onClick={() => setHostMuted((v) => !v)}
+          >
+            {hostMuted || !hostVoice.supported ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+          </CtrlButton>
+
+          {live && (
+            <CtrlButton
+              title="Change topic"
+              disabled={changeTopic.isPending}
+              onClick={() =>
+                changeTopic.mutate(undefined, { onSuccess: (m) => rt.addHostMessage(m) })
+              }
+            >
+              {changeTopic.isPending ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Shuffle className="h-5 w-5" />
+              )}
+            </CtrlButton>
+          )}
+
+          {isOwner && !live && (
+            <button
+              onClick={() => start.mutate()}
+              disabled={start.isPending}
+              className="inline-flex h-12 items-center gap-2 rounded-full bg-[#8ab4f8] px-5 font-medium text-[#202124] hover:bg-[#a8c7fa] disabled:opacity-60"
+            >
+              <Play className="h-5 w-5" /> {start.isPending ? "Starting…" : "Start"}
+            </button>
+          )}
+
+          {isOwner && live ? (
+            <button
+              onClick={() => end.mutate()}
+              disabled={end.isPending}
+              title="End for everyone"
+              className="inline-flex h-12 items-center gap-2 rounded-full bg-[#ea4335] px-5 font-medium text-white hover:bg-[#f28b82] disabled:opacity-60"
+            >
+              <PhoneOff className="h-5 w-5" /> {end.isPending ? "Ending…" : "End"}
+            </button>
+          ) : (
+            <Link
+              href="/practice"
+              title="Leave"
+              aria-label="Leave"
+              className="grid h-12 w-16 place-items-center rounded-full bg-[#ea4335] text-white transition-colors hover:bg-[#f28b82]"
+            >
+              <PhoneOff className="h-5 w-5" />
+            </Link>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end">
+          <span
+            title={`${room.participantIds.length} of ${room.maxParticipants} people`}
+            className="inline-flex h-10 items-center gap-1.5 rounded-full px-3 text-sm text-white/80"
+          >
+            <Users className="h-5 w-5" />
+            {room.participantIds.length}/{room.maxParticipants}
+          </span>
+        </div>
+      </footer>
 
       {/* Hidden remote audio (P2P mesh, when signaling is live) */}
       {voice.remoteStreams.map((r) => (
@@ -229,165 +316,117 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
   );
 }
 
-/* --------------------------- Participant grid ---------------------------- */
+/* --------------------------------- Tiles --------------------------------- */
 
-/** Meet-style column count: keep tiles roughly square as the room fills. */
+/** Meet-style column count: keep tiles roughly 16:9 as the room fills. */
 function gridColsClass(n: number): string {
   if (n <= 1) return "grid-cols-1";
+  if (n <= 2) return "grid-cols-1 sm:grid-cols-2";
   if (n <= 4) return "grid-cols-2";
-  if (n <= 9) return "grid-cols-3";
-  return "grid-cols-4";
+  if (n <= 6) return "grid-cols-2 md:grid-cols-3";
+  return "grid-cols-3 md:grid-cols-4";
 }
 
-function ParticipantGrid({
-  room,
-  presence,
-  selfUid,
-  selfName,
-  selfSpeaking,
-  selfMuted,
-  panelOpen,
-}: {
-  room: { participantIds: string[]; ownerId: string };
-  presence: Record<string, string | undefined>;
-  selfUid?: string;
-  selfName: string;
-  selfSpeaking: boolean;
-  selfMuted: boolean;
-  /** The AI host panel is docked on the right (desktop): keep tiles clear of it. */
-  panelOpen: boolean;
-}) {
-  const ids = room.participantIds;
-  return (
-    <div className={cn("absolute inset-0 overflow-y-auto p-3 sm:p-5", panelOpen && "lg:pr-[23rem]")}>
-      <div
-        className={cn(
-          "mx-auto grid h-full max-w-5xl auto-rows-fr place-content-center gap-3",
-          gridColsClass(ids.length),
-        )}
-      >
-        {ids.map((uid) => {
-          const isSelf = uid === selfUid;
-          const name = isSelf ? selfName : (presence[uid] ?? "Guest");
-          // Membership, not the name: someone connected without a known name is still online.
-          const online = isSelf || uid in presence;
-          return (
-            <ParticipantTile
-              key={uid}
-              name={isSelf ? `${name} (you)` : name}
-              online={online}
-              speaking={isSelf && selfSpeaking}
-              muted={isSelf ? selfMuted : undefined}
-              owner={uid === room.ownerId}
-            />
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ParticipantTile({
+function Tile({
   name,
-  online,
-  speaking,
-  muted,
   owner,
+  online = true,
+  speaking,
+  level,
+  status,
 }: {
   name: string;
-  online: boolean;
+  owner?: boolean;
+  online?: boolean;
   speaking: boolean;
-  muted?: boolean;
-  owner: boolean;
+  level?: number;
+  /** Small corner badge when not speaking. */
+  status?: "mic-off";
 }) {
   return (
     <div
       className={cn(
-        "relative flex min-h-[8rem] items-center justify-center overflow-hidden rounded-2xl bg-[#3c4043] ring-2 transition-all",
-        speaking ? "ring-emerald-400" : "ring-transparent",
-        !online && "opacity-60",
+        "relative flex min-h-[9rem] items-center justify-center overflow-hidden rounded-xl bg-[#3c4043] transition-shadow duration-150",
+        speaking ? "shadow-[inset_0_0_0_3px_#8ab4f8]" : "shadow-none",
+        !online && "opacity-50",
       )}
     >
-      {/* Camera-off placeholder — a real <video> tile drops in here once video ships. */}
-      <ParticipantAvatar name={name} size={84} speaking={speaking} />
+      <ParticipantAvatar
+        name={name}
+        size={96}
+        className={cn("transition-transform duration-150", speaking && "scale-105")}
+      />
 
-      <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-lg bg-black/45 px-2 py-1 text-xs font-semibold backdrop-blur-sm">
-        {muted !== undefined &&
-          (muted ? (
-            <MicOff className="h-3.5 w-3.5 text-secondary-fixed-dim" />
-          ) : (
-            <Mic className="h-3.5 w-3.5 text-white/80" />
-          ))}
-        <span className="max-w-[10rem] truncate">{name}</span>
-        {owner && <Crown className="h-3.5 w-3.5 text-tertiary-fixed-dim" />}
+      <div className="absolute bottom-2.5 left-3 flex items-center gap-1.5 text-sm font-medium [text-shadow:0_1px_2px_rgba(0,0,0,0.7)]">
+        <span className="max-w-[12rem] truncate">{name}</span>
+        {owner && <Crown className="h-3.5 w-3.5 text-[#fdd663]" />}
+      </div>
+
+      <div className="absolute right-2.5 top-2.5">
+        {speaking ? (
+          <VoiceBars level={level} />
+        ) : status === "mic-off" ? (
+          <span className="grid h-7 w-7 place-items-center rounded-full bg-[#ea4335]/90" title="Microphone off">
+            <MicOff className="h-3.5 w-3.5" />
+          </span>
+        ) : null}
       </div>
     </div>
   );
 }
 
-/* --------------------------------- Voice --------------------------------- */
-
-function VoiceIndicator({
-  voice,
-  live,
+/** Your own tile: speaking comes from metering the local mic. */
+function SelfTile({
+  name,
+  owner,
+  stream,
+  micOn,
 }: {
-  voice: ReturnType<typeof useVoiceMesh>;
-  live: boolean;
+  name: string;
+  owner: boolean;
+  stream: MediaStream | null;
+  micOn: boolean;
 }) {
-  if (!live) return null;
-  const label =
-    voice.status === "connected"
-      ? `Voice · ${voice.peerCount} peer${voice.peerCount === 1 ? "" : "s"}`
-      : voice.status === "requesting-mic"
-        ? "Requesting mic…"
-        : voice.status === "mic-denied"
-          ? "Mic blocked"
-          : "Voice ready";
+  const { level, speaking } = useAudioLevel(stream);
   return (
-    <span className="hidden items-center gap-1.5 rounded-pill bg-white/10 px-2.5 py-1 text-xs font-medium text-white/70 sm:inline-flex">
-      <Radio
-        className={cn("h-3.5 w-3.5", voice.status === "connected" ? "text-emerald-400" : "text-white/60")}
-      />
-      {label}
-    </span>
+    <Tile
+      name={`${name} (You)`}
+      owner={owner}
+      speaking={micOn && speaking}
+      level={level}
+      status={micOn ? undefined : "mic-off"}
+    />
   );
 }
 
-/** Surfaces a lost realtime connection — otherwise the room just silently stops updating. */
-function ConnectionIndicator({
-  connection,
-  onReconnect,
+/**
+ * A peer's tile: metered from their audio stream when P2P voice is flowing;
+ * otherwise "speaking" lights up for a few seconds after each transcript line.
+ */
+function PeerTile({
+  name,
+  owner,
+  online,
+  stream,
+  recentlySpoke,
 }: {
-  connection: ReturnType<typeof useRoomSocket>["connection"];
-  onReconnect: () => void;
+  name: string;
+  owner: boolean;
+  online: boolean;
+  stream: MediaStream | null;
+  recentlySpoke: boolean;
 }) {
-  // The first connect normally takes well under a second; only a stuck one shows.
-  const [slowStart, setSlowStart] = useState(false);
-  useEffect(() => {
-    if (connection !== "connecting") return;
-    const timer = setTimeout(() => setSlowStart(true), 5000);
-    return () => clearTimeout(timer);
-  }, [connection]);
-
-  if (connection === "reconnecting" || (connection === "connecting" && slowStart)) {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-pill bg-amber-400/15 px-2.5 py-1 text-xs font-bold text-amber-300">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />{" "}
-        {connection === "connecting" ? "Connecting…" : "Reconnecting…"}
-      </span>
-    );
-  }
-  if (connection === "failed") {
-    return (
-      <button
-        onClick={onReconnect}
-        className="inline-flex items-center gap-1.5 rounded-pill bg-red-500/20 px-2.5 py-1 text-xs font-bold text-red-300 hover:bg-red-500/30"
-      >
-        Disconnected · Reconnect
-      </button>
-    );
-  }
-  return null;
+  const { level, speaking } = useAudioLevel(stream);
+  const talking = stream ? speaking : recentlySpoke;
+  return (
+    <Tile
+      name={name}
+      owner={owner}
+      online={online}
+      speaking={talking}
+      level={stream ? level : undefined}
+    />
+  );
 }
 
 function RemoteAudio({ stream }: { stream: MediaStream }) {
@@ -398,19 +437,144 @@ function RemoteAudio({ stream }: { stream: MediaStream }) {
   return <audio ref={ref} autoPlay className="hidden" />;
 }
 
-/* ---------------------------- Control bar -------------------------------- */
+/* -------------------------------- Host bar ------------------------------- */
+
+/**
+ * The AI host is not a participant, so it doesn't get a tile. It lives in a
+ * slim bar above the room: who it is and what it's doing, the current topic,
+ * and its latest line with every detail (verbatim message, topic, why it
+ * stepped in, what triggered it, when). Earlier lines fold out below.
+ */
+function HostBar({
+  live,
+  topic,
+  openingTopic,
+  openingPickedByHost,
+  latest,
+  history,
+  speaking,
+  muted,
+}: {
+  live: boolean;
+  topic: string;
+  openingTopic: string;
+  openingPickedByHost: boolean;
+  latest: HostMessage | undefined;
+  history: HostMessage[];
+  speaking: boolean;
+  muted: boolean;
+}) {
+  const [showEarlier, setShowEarlier] = useState(false);
+  const earlier = history.filter((m) => m.id !== latest?.id);
+  const status = speaking ? "speaking" : live ? "listening" : "waiting to start";
+
+  return (
+    <section
+      aria-label="AI host"
+      className={cn(
+        "mx-auto w-full max-w-3xl shrink-0 rounded-2xl bg-[#303134] px-4 py-3 transition-shadow duration-200",
+        speaking && "shadow-[0_0_0_2px_#8ab4f8]",
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <ParticipantAvatar name={HOST_NAME} isAI size={40} speaking={speaking} className="ring-offset-[#303134]" />
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/60">
+            <span className="inline-flex items-center gap-1 font-medium text-white">
+              <Sparkles className="h-3.5 w-3.5 text-[#fdd663]" /> {HOST_NAME}
+            </span>
+            <span>· {status}</span>
+            {speaking && <VoiceBars size={16} />}
+            {muted && (
+              <span className="inline-flex items-center gap-1" title="Host voice muted">
+                <VolumeX className="h-3.5 w-3.5" /> muted
+              </span>
+            )}
+          </div>
+
+          {/* The topic is the point of the host — make it the hero, and flash it on change. */}
+          <div className="mt-2">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-white/50">
+              {latest ? "Now talking about" : "Opening topic"}
+            </p>
+            <p key={topic} className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="animate-topic-highlight -mx-1.5 inline-block max-w-full truncate rounded-lg px-1.5 py-0.5 text-xl font-semibold leading-tight text-white">
+                {topic}
+              </span>
+              {openingPickedByHost && topic === openingTopic && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-[#fdd663]/15 px-2 py-0.5 text-[11px] font-medium text-[#fdd663]">
+                  <Sparkles className="h-3 w-3" /> picked by the host
+                </span>
+              )}
+              {latest && topic !== openingTopic && (
+                <span className="text-xs text-white/40" title={`Started on “${openingTopic}”`}>
+                  · started on “{openingTopic}”
+                </span>
+              )}
+            </p>
+          </div>
+
+          {/* Details — only a host message carries them (the opening topic has none). */}
+          {latest ? (
+            <div key={latest.id} className="animate-fade-up mt-2 border-l-2 border-[#8ab4f8]/60 pl-3">
+              <p className="text-sm leading-snug text-white/90">“{latest.message}”</p>
+              <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/60">
+                <span className="rounded-full bg-white/10 px-2 py-0.5 text-white/80">{TRIGGER[latest.trigger]}</span>
+                <span>{clock(latest.at)}</span>
+                <span className="text-white/40">·</span>
+                <span className="min-w-0">{latest.reason}</span>
+              </p>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-white/60">
+              {live
+                ? "Listening to the conversation — I'll jump in with a new topic when it's time."
+                : "I'll start listening when the room starts."}
+            </p>
+          )}
+
+          {earlier.length > 0 && (
+            <button
+              onClick={() => setShowEarlier((v) => !v)}
+              className="mt-2 text-xs font-medium text-[#8ab4f8] hover:underline"
+            >
+              {showEarlier ? "Hide earlier topics" : `Earlier topics (${earlier.length})`}
+            </button>
+          )}
+          {showEarlier && earlier.length > 0 && (
+            <ul className="thin-scroll mt-2 max-h-40 space-y-2 overflow-y-auto border-t border-white/10 pt-2">
+              {earlier.map((m) => (
+                <li key={m.id}>
+                  <p className="text-sm text-white/90">“{m.message}”</p>
+                  <p className="text-xs text-white/50">
+                    {m.topic} · {TRIGGER[m.trigger]} · {clock(m.at)} · {m.reason}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ------------------------------- Controls -------------------------------- */
 
 function CtrlButton({
   onClick,
   active,
-  danger,
+  off,
   disabled,
   title,
   children,
 }: {
   onClick?: () => void;
+  /** Highlighted (Meet blue), e.g. a panel that is open. */
   active?: boolean;
-  danger?: boolean;
+  /** Turned off (Meet red), e.g. mic off. */
+  off?: boolean;
   disabled?: boolean;
   title: string;
   children: React.ReactNode;
@@ -423,11 +587,11 @@ function CtrlButton({
       aria-label={title}
       className={cn(
         "grid h-12 w-12 place-items-center rounded-full transition-colors disabled:opacity-40",
-        danger
-          ? "bg-secondary text-on-secondary hover:bg-secondary-container"
+        off
+          ? "bg-[#ea4335] text-white hover:bg-[#f28b82]"
           : active
-            ? "bg-white text-[#202124] hover:bg-white/90"
-            : "bg-white/10 text-white hover:bg-white/20",
+            ? "bg-[#8ab4f8] text-[#202124] hover:bg-[#a8c7fa]"
+            : "bg-[#3c4043] text-white hover:bg-[#4a4d51]",
       )}
     >
       {children}
@@ -435,144 +599,28 @@ function CtrlButton({
   );
 }
 
-function ControlBar({
-  live,
-  isOwner,
-  stt,
-  voice,
-  connected,
-  onStart,
-  starting,
-  onEnd,
-  ending,
-  onLeave,
-  leaving,
-  aiOpen,
-  aiUnread,
-  onToggleAi,
-}: {
-  live: boolean;
-  isOwner: boolean;
-  stt: ReturnType<typeof useSpeechRecognition>;
-  voice: ReturnType<typeof useVoiceMesh>;
-  connected: boolean;
-  onStart: () => void;
-  starting: boolean;
-  onEnd: () => void;
-  ending: boolean;
-  onLeave: () => void;
-  leaving: boolean;
-  aiOpen: boolean;
-  /** A topic arrived that the user hasn't opened the panel for yet. */
-  aiUnread: boolean;
-  onToggleAi: () => void;
-}) {
-  const micReady = voice.status === "ready" || voice.status === "connected";
+/** Time left until `scheduledEndAt`; turns red in the last minute. */
+function Countdown({ ms }: { ms: number }) {
   return (
-    <footer className="flex h-20 shrink-0 items-center justify-center gap-2 px-4 sm:justify-between">
-      {/* Left — spacer mirroring the right column so the call controls stay centered */}
-      <div className="hidden w-40 sm:block" aria-hidden />
-
-      {/* Center — call controls */}
-      <div className="flex items-center gap-2 sm:gap-3">
-        {/* AI host topics — on demand, never over the participants */}
-        <div className="relative">
-          <CtrlButton
-            title={aiUnread ? "AI host — new topic" : "AI host topics"}
-            active={aiOpen}
-            onClick={onToggleAi}
-          >
-            <Sparkles className="h-5 w-5" />
-          </CtrlButton>
-          {aiUnread && (
-            <span
-              aria-hidden
-              className="pointer-events-none absolute right-0.5 top-0.5 h-3 w-3 rounded-full bg-tertiary-fixed ring-2 ring-[#202124]"
-            />
-          )}
-        </div>
-
-        {/* Talk to the AI (browser speech-to-text) */}
-        {stt.supported ? (
-          <CtrlButton
-            title={stt.listening ? "Pause talking" : "Talk — let the AI hear you"}
-            active={stt.listening}
-            disabled={!live || !connected}
-            onClick={() => (stt.listening ? stt.stop() : stt.start())}
-          >
-            {stt.listening ? (
-              <Mic className="h-5 w-5 animate-pulse" />
-            ) : (
-              <MicOff className="h-5 w-5" />
-            )}
-          </CtrlButton>
-        ) : (
-          <CtrlButton
-            title="This browser has no speech-to-text, so the AI host can't hear you — use Chrome or Edge"
-            disabled
-          >
-            <MicOff className="h-5 w-5" />
-          </CtrlButton>
-        )}
-
-        {/* Voice mute (P2P mesh) — active once a mic is acquired */}
-        <CtrlButton
-          title={voice.muted ? "Unmute voice" : "Mute voice"}
-          disabled={!micReady}
-          active={micReady && !voice.muted}
-          onClick={voice.toggleMute}
-        >
-          {voice.muted ? <MicOff className="h-5 w-5" /> : <Radio className="h-5 w-5" />}
-        </CtrlButton>
-
-        {/* Camera — placeholder for the future video call */}
-        <CtrlButton title="Camera (coming soon)" disabled>
-          <VideoOff className="h-5 w-5" />
-        </CtrlButton>
-
-        {isOwner && !live && (
-          <button
-            onClick={onStart}
-            disabled={starting}
-            className="inline-flex h-12 items-center gap-2 rounded-full bg-primary px-5 font-semibold text-on-primary hover:opacity-90 disabled:opacity-60"
-          >
-            <Play className="h-5 w-5" /> {starting ? "Starting…" : "Start"}
-          </button>
-        )}
-        {isOwner && live && (
-          <button
-            onClick={onEnd}
-            disabled={ending}
-            className="inline-flex h-12 items-center gap-2 rounded-full bg-secondary px-5 font-semibold text-on-secondary hover:bg-secondary-container disabled:opacity-60"
-          >
-            <PhoneOff className="h-5 w-5" /> {ending ? "Ending…" : "End & report"}
-          </button>
-        )}
-
-        {/* Leave — frees the seat; coming back re-joins automatically */}
-        <button
-          onClick={onLeave}
-          disabled={leaving}
-          title="Leave"
-          aria-label="Leave"
-          className="grid h-12 w-14 place-items-center rounded-full bg-secondary text-on-secondary transition-colors hover:bg-secondary-container disabled:opacity-60"
-        >
-          {leaving ? <Loader2 className="h-5 w-5 animate-spin" /> : <PhoneOff className="h-5 w-5" />}
-        </button>
-      </div>
-
-      {/* Right — reserved to keep the center group centered */}
-      <div className="hidden w-40 justify-end sm:flex">
-        <button
-          onClick={onLeave}
-          disabled={leaving}
-          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-white/60 hover:text-white disabled:opacity-60"
-        >
-          <ArrowLeft className="h-4 w-4" /> Rooms
-        </button>
-      </div>
-    </footer>
+    <span
+      title="Time left in this session"
+      className={cn("inline-flex items-center gap-1.5 tabular-nums", ms <= 60_000 && "text-[#f28b82]")}
+    >
+      <Timer className="h-4 w-4" />
+      {ms === 0 ? "Ending…" : `${formatCountdown(ms)} left`}
+    </span>
   );
+}
+
+function Clock() {
+  const [now, setNow] = useState<string>("");
+  useEffect(() => {
+    const tick = () => setNow(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    tick();
+    const id = setInterval(tick, 15_000);
+    return () => clearInterval(id);
+  }, []);
+  return <span>{now}</span>;
 }
 
 /* --------------------------------- Report -------------------------------- */

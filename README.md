@@ -2,7 +2,7 @@
 
 Frontend for **PartyTalk** — live group English-practice **rooms** where an AI host listens to the
 conversation and suggests fresh topics in real time, then delivers a highlights + suggestions
-**report** at the end. Includes a parked IELTS exam simulator (still on local mock data).
+**report** at the end.
 
 This app talks to the **PartyTalk API** (NestJS) and authenticates with **Google Identity Services ("Sign in with Google")** — the API verifies the Google ID token directly.
 
@@ -10,7 +10,7 @@ This app talks to the **PartyTalk API** (NestJS) and authenticates with **Google
 
 | Service | Port | Notes |
 | --- | --- | --- |
-| PartyTalk API | `8080` | Runs separately (`PORT=8080` in its `.env`); Swagger at http://localhost:8080/docs |
+| PartyTalk API | `8080` | Runs separately; Swagger at http://localhost:8080/docs |
 | This web app | `3000` | `npm run dev` (already pinned to `-p 3000`) |
 
 ## Setup
@@ -25,11 +25,10 @@ npm run dev                         # http://localhost:3000
 
 `.env.local` values:
 
-- `NEXT_PUBLIC_API_BASE_URL` — REST base, `http://localhost:8080/api/v1` in the example file
-- `NEXT_PUBLIC_API_SOCKET_URL` — Socket.IO origin, `http://localhost:8080` in the example file (namespace `/rooms`)
+- `NEXT_PUBLIC_API_BASE_URL` — REST base, e.g. `http://localhost:8080/api/v1` (the built-in default of `localhost:3000` collides with the web port, so set it)
+- `NEXT_PUBLIC_API_SOCKET_URL` — Socket.IO origin, e.g. `http://localhost:8080` (namespace `/rooms`)
 - `NEXT_PUBLIC_GOOGLE_CLIENT_ID` — OAuth 2.0 **Web application** client ID (Google Cloud console →
-  APIs & Services → Credentials). It must be the same client ID the API verifies against
-  (`GOOGLE_OAUTH_CLIENT_ID`). Add `http://localhost:3000` to the client's **Authorized
+  APIs & Services → Credentials). Add `http://localhost:3000` to the client's **Authorized
   JavaScript origins**. Until it's filled in, the app runs but the sign-in screen shows a "not
   configured" notice.
 - `NEXT_PUBLIC_DISABLE_AUTH` / `NEXT_PUBLIC_DEV_BEARER_TOKEN` — optional, dev only. Skip the
@@ -48,11 +47,10 @@ this dev server rather than the API.
    room the owner can invite more people, revoke them (which removes them on the spot), or share an
    invite link (`/practice/<id>?invite=<code>`) that adds whoever opens it to the guest list.
 3. **Live loop** — join via REST, then connect the `rooms` Socket.IO namespace. Each client
-   transcribes its own mic with the **browser Web Speech API** and emits `transcript` events. The
-   transcript isn't shown to participants; it's what the AI host listens to. Browsers without the
-   API (e.g. Firefox) can't feed the AI. The backend AI facilitator pushes
-   `topicSuggested` events (trigger: volume / silence / manual) which render live; `presence` tracks
-   who's in.
+   transcribes its own mic with the **browser Web Speech API** and emits `transcript` events (typed
+   fallback where the API is unavailable, e.g. Firefox). The backend AI facilitator pushes
+   `topicSuggested` events (trigger: volume / silence / manual) which render live; `roomUpdated` carries the
+   full room (members, status, scheduled end) and `presence` only says who's online.
 4. **Report** — the owner ends the room → backend generates the `RoomReport` (summary, highlights,
    suggestions, topics explored), delivered on `sessionEnded` and the room's `report` field.
 5. **Voice (peer-to-peer)** — participants hear each other over a WebRTC **P2P mesh**; the API
@@ -63,7 +61,7 @@ this dev server rather than the API.
 ## Tech stack
 
 - **Next.js 16** (App Router) + **React 19**
-- **Tailwind CSS v3** (design tokens from the Google Stitch IELTS design system)
+- **Tailwind CSS v3** (design tokens from a Google Stitch design system)
 - **TanStack React Query v5** + a typed `api` client (`src/lib/apiClient.ts`)
 - **Google Identity Services** (`src/lib/googleAuth.ts`, `src/components/auth/*`)
 - **socket.io-client** (`src/lib/socket.ts`, `src/lib/useRoomSocket.ts`)
@@ -77,16 +75,15 @@ src/
   app/
     page.tsx                 Public marketing landing
     practice/                Rooms browser + live room (auth-gated)
-    ielts/                   Parked IELTS simulator (mock data)
   components/
     auth/                    AuthProvider, RequireAuth, SignInScreen
     profile/                 Onboarding + ProfileGate
     app/                     AppHeader, LoadingScreen
     practice/                RoomsBrowser, RoomCard, room/RoomExperience
-    ielts/, brand/, site/, marketing/, ui/
+    brand/, site/, marketing/, ui/
   lib/
     apiClient.ts, socket.ts, googleAuth.ts, env.ts
-    api/rooms.ts, api/users.ts, api/ielts.ts
+    api/rooms.ts, api/users.ts
     queries.ts               React Query hooks + keys
     useRoomSocket.ts, useVoiceMesh.ts, useSpeechRecognition.ts
     types.ts, cn.ts
@@ -98,10 +95,8 @@ src/
 | --- | --- | --- |
 | `/` | public | Marketing landing |
 | `/practice` | required | Browse + create rooms |
-| `/practice/[roomId]` | required + invited | Live room: voice, topic suggestions, report. `?invite=<code>` redeems an invite link |
-| `/ielts`, `/ielts/*` | public | Parked IELTS simulator (mock) |
+| `/practice/[roomId]` | required | Live room: transcript, topic suggestions, report |
 
 ## Notes
 
 - English is the only active practice language; others show "coming soon".
-- The IELTS pages remain on local mock fetchers (`src/lib/api/ielts.ts`) — parked, not wired to the API yet.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { roomsApi } from "./api/rooms";
+import { env } from "./env";
 import type { RoomsSocket } from "./socket";
 
 /** Used only if the API's ICE servers can't be fetched: enough for most home networks. */
@@ -44,6 +44,8 @@ export function useVoiceMesh({ socket, roomId, enabled, selfUid }: Options) {
   const [micStatus, setMicStatus] = useState<Exclude<VoiceStatus, "connected">>("off");
   const [muted, setMuted] = useState(false);
   const [remoteStreams, setRemoteStreams] = useState<RemoteStream[]>([]);
+  /** The local mic stream once acquired (for level metering / speaking indicators). */
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -133,9 +135,10 @@ export function useVoiceMesh({ socket, roomId, enabled, selfUid }: Options) {
           return;
         }
         localStreamRef.current = stream;
-        setMicStatus("ready");
-        // Not connected yet → onConnect joins once the socket is up.
-        if (socket.connected) join();
+        setLocalStream(stream);
+        setStatus("ready");
+        // Only announce ourselves when the backend actually relays signaling.
+        if (env.voiceMeshEnabled) socket.emit("webrtc:join", { roomId });
       } catch {
         if (active) {
           setMicStatus("mic-denied");
@@ -219,7 +222,9 @@ export function useVoiceMesh({ socket, roomId, enabled, selfUid }: Options) {
       removeAllPeers();
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
-      setMicStatus("off");
+      setLocalStream(null);
+      setRemoteStreams([]);
+      setStatus("off");
     };
   }, [enabled, socket, roomId, selfUid, addRemote, removePeer, removeAllPeers]);
 
@@ -235,6 +240,7 @@ export function useVoiceMesh({ socket, roomId, enabled, selfUid }: Options) {
     status: (micStatus === "ready" && remoteStreams.length > 0 ? "connected" : micStatus) as VoiceStatus,
     muted,
     toggleMute,
+    localStream,
     remoteStreams,
     peerCount: remoteStreams.length,
     error,

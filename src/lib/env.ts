@@ -18,6 +18,12 @@ export const env = {
    * "Authorize" dialog). Optional — without it, requests go out unauthenticated.
    */
   devBearerToken: process.env.NEXT_PUBLIC_DEV_BEARER_TOKEN ?? "",
+  /**
+   * Send `webrtc:*` signaling over the rooms socket. Off by default until the
+   * backend ships the relay (milestone M1): emitting events the server doesn't
+   * handle can get the socket dropped. The mic is still acquired for metering.
+   */
+  voiceMeshEnabled: process.env.NEXT_PUBLIC_VOICE_MESH === "true",
 };
 
 /** True once the Google OAuth web client ID is filled in (see .env.local.example). */

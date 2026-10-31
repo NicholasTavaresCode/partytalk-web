@@ -10,9 +10,9 @@ export const metadata: Metadata = {
     template: "%s · PartyTalk",
   },
   description:
-    "PartyTalk brings language learners into small live rooms to practise English out loud, guided by a friendly AI host — plus a faithful IELTS exam simulator for Listening, Reading, Writing and Speaking.",
+    "PartyTalk brings language learners into small live rooms to practise English out loud, guided by an AI host that listens in and moves the group on to new topics.",
   applicationName: "PartyTalk",
-  keywords: ["English practice", "language exchange", "IELTS simulator", "speaking practice", "AI tutor"],
+  keywords: ["English practice", "language exchange", "speaking practice", "AI host"],
 };
 
 export default function RootLayout({

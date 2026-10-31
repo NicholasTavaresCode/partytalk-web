@@ -17,37 +17,33 @@ Stack: Next.js 16 (App Router, Turbopack) · React 19 · React Query 5 · Tailwi
 ## Commands
 
 ```bash
-npm run dev     # dev server on http://localhost:3000 (port is pinned)
+npm run dev     # dev server on http://localhost:3000 (port pinned in package.json)
 npm run build   # production build
 npm run start   # serve the build on 3000
-npm run lint    # eslint (flat config, next core-web-vitals + typescript)
-npx tsc --noEmit
-./deploy-hml.sh # Cloud Build (cloudbuild.yaml → Dockerfile) + Cloud Run deploy to HML
+npm run lint    # eslint (flat config: next core-web-vitals + typescript)
+npm test        # vitest run (src/**/*.test.ts, node environment)
 ```
 
-- **Lint:** `npm run lint` has one pre-existing error in the parked `src/app/ielts/speaking/page.tsx` (`react-hooks/set-state-in-effect`). Lint the files you touched with `npx eslint <paths>`.
-- **Stale route types:** if `tsc` complains about a route that no longer exists, it is reading stale generated types. Run `rm -rf .next/dev/types .next/types` and check again.
-- **Builds:** production images use `output: "standalone"` and run `node server.js` (see [Dockerfile](Dockerfile)). `NEXT_PUBLIC_*` values are inlined at **build** time, so they're Docker build args fed by `deploy-hml.sh` through `cloudbuild.yaml` (`gcloud run deploy --source` can't pass build args). Changing one means rebuilding the image. `.env*` files are kept out of the build context on purpose.
-- **Turbopack panic:** if `next dev` prints `FATAL: An unexpected Turbopack error occurred` with "Next.js package not found" in the panic log (the page loops on "[Fast Refresh] rebuilding"), Turbopack's persistent dev cache in `.next/dev/cache` is stale, typically after `node_modules` was reinstalled. Stop the server, `rm -rf .next`, restart. It only shows up with a browser attached (HMR), not with `curl`.
+Tests: `npm test` runs vitest (node environment, `src/**/*.test.ts`); the pure room logic in `src/lib/roomHistory.ts` and `src/lib/hostVoice.ts` is covered there.
 
-## Running locally
+**Ports and env.** The web app runs on **3000**. The PartyTalk API (NestJS) runs separately; `.env.local.example` points at it on **8080** (`/api/v1` REST, Socket.IO namespace `/rooms`, Swagger at `:8080/docs`). The fallback defaults in [src/lib/env.ts](src/lib/env.ts) still say `localhost:3000`, which now collides with the web port — so always copy `.env.local.example` → `.env.local` and set `NEXT_PUBLIC_API_BASE_URL` / `NEXT_PUBLIC_API_SOCKET_URL`. (README.md still describes the older 3001/3000 split; `package.json` and the env example are the source of truth.) Both web and API must run for the rooms feature to work end to end.
 
-- **The API must run too.** The web app runs on **3000** and expects the API on **8080**: `/api/v1` REST, Socket.IO namespace `/rooms`, Swagger at `:8080/docs`. In `../partytalk-api`, run `docker compose up firestore` (the emulator) and `npm run start:dev`.
-- **Env:** copy `.env.local.example` → `.env.local` and set `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, which must equal the API's `GOOGLE_OAUTH_CLIENT_ID`. Until then the app boots but the sign-in screen shows a "not configured" notice (`googleConfigured` in [src/lib/env.ts](src/lib/env.ts)). Keep the API URLs set: `env.ts` falls back to `localhost:3000`, which is this dev server, not the API.
-- **Sign-in origin:** "Sign in with Google" works only on origins listed in the OAuth client, which locally is `http://localhost:3000`. On any other port, GIS's status call returns 403 and sign-in fails, so auth-gated pages can't be reached there.
-- **Dev auth bypass:** `NEXT_PUBLIC_DISABLE_AUTH=true` skips the GIS gate with a fake dev user. Requests then go out unauthenticated unless `NEXT_PUBLIC_DEV_BEARER_TOKEN` holds a real Google ID token (e.g. copied from Swagger's Authorize dialog). Pair it with the API's `AUTH_DISABLED=true` for REST; the Socket.IO handshake always needs a real token.
-- **Dev servers:** the user usually runs their own `next dev` on 3000; reuse it and its log. If you need your own, run `npx next dev -p <other port>` and stop only the PIDs you started. Never kill by pattern.
+**Dev auth bypass.** Set `NEXT_PUBLIC_DISABLE_AUTH=true` to skip Google sign-in entirely: `AuthProvider` hands down a stand-in user (`getDevUser()` in `googleAuth.ts`) and GIS is never loaded. Optionally set `NEXT_PUBLIC_DEV_BEARER_TOKEN` to a Google ID token (copy one from Swagger's "Authorize" dialog) — it's decoded into the dev user and attached as `Authorization: Bearer` so protected endpoints work; without it requests go out unauthenticated. `ProfileGate` still runs, so with a token you'll be onboarded if that user has no profile. Without the bypass, `NEXT_PUBLIC_GOOGLE_CLIENT_ID` is required; until it's set the app boots but the sign-in screen shows a "not configured" notice (`googleConfigured` in `env.ts`).
 
-## Verifying UI changes
-
-There is no test runner. Before you call a change done, run `npx tsc --noEmit`, `npx eslint` on the changed files and `npm run build`. Then look at it:
-
-- **Tooling:** drive headless Chromium with `playwright-core`, installed in a scratch directory and not in this repo, against a dev server. Take screenshots and read console errors.
-- **Pages behind sign-in:** `/practice` and the room pages need a real Google sign-in. Render the component you changed from a temporary harness page under `src/app/<name>/page.tsx` (export the component temporarily if needed), screenshot it, then delete the harness, revert the export and clear `.next/dev/types`.
-- **Dev overlay badge:** a red "1 Issue" badge while signed out is Google sign-in's FedCM message ("Provider's accounts list is empty"), not an app error.
-- **Landing page:** it must stay **one screen with no scrolling**. Check that `document.documentElement.scrollHeight` is at most the viewport height, and that the page doesn't scroll horizontally, at 1440×900, 1366×657, 1280×720, 1024×640, 768×1024, 390×844 and 375×667.
+`next.config.ts` sets `allowedDevOrigins` for LAN testing from another device; add your machine's IP there if needed.
 
 ## Architecture
+
+**The integration seam (read this first).** Components **never call `fetch` directly**. Data flows: component → React Query hook ([src/lib/queries.ts](src/lib/queries.ts)) → typed fetcher (`src/lib/api/*.ts`) → `api` client ([src/lib/apiClient.ts](src/lib/apiClient.ts)). All request/response shapes live in [src/lib/types.ts](src/lib/types.ts) and are the contract with the backend (see [API_HANDOFF.md](API_HANDOFF.md), the brief the backend was built from). Change a data shape in one place and it propagates; keep this seam intact.
+
+- **`apiClient.ts`** — attaches the Google ID token as `Authorization: Bearer`, unwraps the backend's `{ data, meta }` envelope (returns `data`), and throws `ApiError` carrying the HTTP `status` (callers branch on it, e.g. 404 → "no profile yet" in `useMe`).
+- **`queries.ts`** — the single home for query keys (`queryKeys`) and all React Query hooks. Room queries are `enabled` only when a user is signed in; `useRooms` polls every 15s; `useRoomLifecycle(id)` bundles the join/start/end/changeTopic mutations; mutations invalidate/`setQueryData` to keep the cache fresh.
+
+**Auth & gating.** "Sign in with Google" via **Google Identity Services** (GIS) — no Firebase. The API verifies the raw Google ID token on every request (its `sub` claim is the user's `uid`). [src/lib/googleAuth.ts](src/lib/googleAuth.ts) loads GIS, holds the current ID token in memory, decodes it into an `AuthUser` (`{ uid, email, displayName, picture }`), and exposes `getIdToken()` (silently re-issues on expiry via One Tap), `renderSignInButton`, `signOut`, and an `onAuthChange` subscription. [AuthProvider](src/components/auth/AuthProvider.tsx) wraps that in `useAuth()` and, on load, calls `restoreSession()` to silently sign returning users back in (`auto_select`). `SignInScreen` renders the official GIS button; auth-gated pages wrap content in `<RequireAuth>` (→ `SignInScreen` if signed out) then `<ProfileGate>` (→ `ProfileOnboarding` if the user has no profile — first sign-in calls `PUT /users/me`). The same fresh ID token authenticates both REST calls and the Socket.IO handshake (`auth.token`). Requires `NEXT_PUBLIC_GOOGLE_CLIENT_ID` (OAuth web client, with the app origin in "Authorized JavaScript origins").
+
+**Realtime room loop.** [useRoomSocket](src/lib/useRoomSocket.ts) owns one room's connection: it seeds history from REST (`getTranscript`/`getHostMessages`), then connects the `/rooms` Socket.IO namespace ([socket.ts](src/lib/socket.ts)) and feeds `transcript` / `hostMessage` / `presence` / `sessionEnded` events through the pure `roomReducer`; `roomUpdated` (the full `Room` on join/leave/start) bypasses the reducer and is written straight into the React Query cache via `useApplyRoom`, the same path the REST lifecycle responses take, so membership/status/`scheduledEndAt` always come from the `Room` object and `presence` is only online status in [roomHistory.ts](src/lib/roomHistory.ts), which also merges transcript and host lines by `at` and derives the current topic (latest `hostMessage.topic`, falling back to `room.topic`, which is only the opening topic). Each client transcribes its own mic via the browser Web Speech API ([useSpeechRecognition.ts](src/lib/useSpeechRecognition.ts)) and emits `transcript` events (typed fallback where unavailable, e.g. Firefox). **The AI host is a permanent member of every room**: it listens to the transcript and, when it decides, *announces* a completely new topic (`hostMessage.message` is the exact sentence it says; there is no accept/reject). [hostVoice.ts](src/lib/hostVoice.ts) reads each new host line aloud via `speechSynthesis` (never seeded history; mutable). [RoomExperience](src/components/practice/room/RoomExperience.tsx) is the main live-room UI and composes `useRoom` + `useRoomLifecycle` + `useRoomSocket` + `useHostVoice` + `useSpeechRecognition` + `useVoiceMesh`. Socket event types are in `types.ts` (`ServerToClientEvents` / `ClientToServerEvents`).
+
+**Voice mesh is a stub.** [useVoiceMesh.ts](src/lib/useVoiceMesh.ts) implements the WebRTC P2P signaling client, but the backend relay (`webrtc:*`) is an unshipped milestone. Signaling emits are gated behind `NEXT_PUBLIC_VOICE_MESH=true` (off by default: emitting unhandled events can get the socket dropped server-side); the mic is still acquired when live so the self tile can meter it. `useRoomSocket` reconnects itself after an `io server disconnect`, which socket.io does not retry on its own.
 
 **Routes** ([src/app/](src/app/)):
 - `/` is the one-screen landing page (static).
@@ -181,9 +177,8 @@ HML is the GCP project `partytalk-hml` (us-central1), used for testing with sele
 
 ## Conventions
 
-- `@/*` path alias → `src/*` (tsconfig). Client components need `"use client"`; keep pages as server components where possible, e.g. the landing page, which exports `metadata` and imports small client pieces.
-- **Styling is Tailwind v3 with semantic design tokens**, not raw colors. Use `bg-surface`, `text-primary`, `text-on-surface-variant`, `rounded-pill`, `font-display`, etc. The full token scale (Material-style, from a Google Stitch design system: navy `primary`, red `secondary`, gold `tertiary-fixed`) is defined in [tailwind.config.ts](tailwind.config.ts). Prefer tokens over hex values. The live room's dark surfaces (`#202124`, `#3c4043`) are the one deliberate exception.
-- Custom animations live in `tailwind.config.ts`: `fade-up`, `float`, `eq`, `aurora`, `topic-in`, `pulse-ring`. Use them as `motion-safe:animate-*`. Texture utilities (`bg-grid`, `bg-dots`) are in [globals.css](src/app/globals.css).
-- Fonts: **Arimo** (body, `font-sans`) and **Sora** (display, `font-display`), wired in [src/lib/fonts.ts](src/lib/fonts.ts) and the root layout. Icons: `lucide-react`.
+- `@/*` path alias → `src/*` (tsconfig). Client components need `"use client"`.
+- **Styling is Tailwind v3 with semantic design tokens**, not raw colors — use `bg-surface`, `text-primary`, `text-on-surface-variant`, `rounded-pill`, `font-display`, etc. The full token scale (Material-style, lifted from a Google Stitch design system) is defined in [tailwind.config.ts](tailwind.config.ts). Prefer tokens over hex values so the app and marketing surfaces stay consistent.
+- Fonts: **Arimo** (body, `font-sans`) and **Sora** (marketing display, `font-display`), wired in [src/lib/fonts.ts](src/lib/fonts.ts) and the root layout. Icons: `lucide-react`.
 - `cn()` ([src/lib/cn.ts](src/lib/cn.ts)) for conditional class names.
 - Work on the local checkout as it is: don't pull, and don't ask to pull. Commit or push only when the user asks.

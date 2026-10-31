@@ -24,15 +24,6 @@ export function AppHeader() {
         </Link>
 
         <div className="flex items-center gap-2">
-          {IELTS_ENABLED && (
-            <Link
-              href="/ielts"
-              className="hidden rounded-lg px-3.5 py-2 text-[15px] font-medium text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface sm:block"
-            >
-              IELTS Prep
-            </Link>
-          )}
-
           <div className="relative">
             <button
               onClick={() => setOpen((v) => !v)}

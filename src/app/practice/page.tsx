@@ -25,8 +25,8 @@ export default function PracticePage() {
                 Find a room, start talking
               </h1>
               <p className="mt-3 max-w-2xl text-lg text-on-surface-variant">
-                Join a live conversation or open your own. Your AI host listens along and suggests
-                fresh topics to keep everyone speaking.
+                Join a live conversation or open your own. Your AI host listens along and moves the
+                group on to a new topic when it&apos;s time.
               </p>
             </Container>
           </section>

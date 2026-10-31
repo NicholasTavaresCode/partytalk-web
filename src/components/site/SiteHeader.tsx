@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/Button";
 
 const NAV = [
   { label: "Group Practice", href: "/practice" },
-  ...(IELTS_ENABLED ? [{ label: "IELTS Prep", href: "/ielts" }] : []),
 ];
 
 export function SiteHeader() {

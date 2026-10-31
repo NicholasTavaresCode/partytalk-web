@@ -1,72 +1,74 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { connectRoomsSocket, type RoomsSocket } from "./socket";
 import { roomsApi } from "./api/rooms";
-import { queryKeys } from "./queries";
-import type { RoomReport, TopicSuggestion } from "./types";
+import {
+  initialRoomState,
+  latestHostMessage,
+  mergeHistory,
+  roomReducer,
+  type HistoryItem,
+  type RoomState,
+} from "./roomHistory";
+import { useApplyRoom } from "./queries";
+import type { HostMessage } from "./types";
 
-function upsertById<T extends { id: string }>(list: T[], item: T): T[] {
-  if (list.some((x) => x.id === item.id)) return list;
-  return [...list, item];
-}
-
-/** The room's realtime connection, as the UI should describe it. */
-export type RoomConnection = "connecting" | "connected" | "reconnecting" | "failed";
-
-/** Refused handshakes retried after 1, 2, 4, 8, 16 s — then shown as failed. */
-const MAX_RETRIES = 5;
-
-export interface RoomSocketState {
+/** `presence` = which participants currently have a socket subscribed (online), and their names. */
+export interface RoomSocketState extends RoomState {
   socket: RoomsSocket | null;
-  connected: boolean;
-  connection: RoomConnection;
-  /** Manual retry after `connection` is "failed". */
-  reconnect: () => void;
-  suggestions: TopicSuggestion[];
-  /** uid → display name, for everyone connected (seeded by `roster`, kept by `presence`). */
-  presence: Record<string, string | undefined>;
-  endedReport: RoomReport | null | undefined; // undefined = not ended; null = ended without report
-  ended: boolean;
-  /** The owner revoked this user's invite; the server already dropped them from the room. */
-  removed: boolean;
-  error: string | null;
+  /** Transcript and host lines interleaved by time, oldest first. */
+  history: HistoryItem[];
+  /** The most recent thing the host said, if anything. */
+  latestHostMessage: HostMessage | undefined;
+  /** Add a host message received out-of-band (e.g. the change-topic response). Deduped by id. */
+  addHostMessage: (message: HostMessage) => void;
   sendTranscript: (text: string) => void;
 }
 
+interface Options {
+  /**
+   * Connect only once this is true — i.e. once the user is a participant. On a
+   * first visit the REST join is still in flight when the page mounts; emitting
+   * `joinRoom` before it lands gets rejected by the server, leaving the client
+   * disconnected (and the mic disabled) until a reload.
+   */
+  enabled: boolean;
+}
+
 /**
- * Owns the realtime connection for one room: joins the `rooms` namespace, seeds
- * topic suggestions from REST, then streams `topicSuggested` / `presence` /
- * `sessionEnded` events. Transcript only flows outward (`sendTranscript`) to feed
- * the AI host — the UI never displays it, so the client ignores `transcript`
- * broadcasts.
- *
- * `isParticipant` gates the `joinRoom` subscription: the server only admits
- * participants, and a first-time visitor's REST join usually lands *after* the
- * socket connects — so we (re)subscribe whenever membership or the connection flips.
+ * Owns the realtime connection for one room: seeds history from REST
+ * (`transcript` + `host-messages`), joins the `rooms` namespace, then streams
+ * `transcript` / `hostMessage` / `presence` / `sessionEnded` events through
+ * `roomReducer`.
  */
-export function useRoomSocket(roomId: string, isParticipant: boolean): RoomSocketState {
-  const queryClient = useQueryClient();
+export function useRoomSocket(roomId: string, { enabled }: Options): RoomSocketState {
   const socketRef = useRef<RoomsSocket | null>(null);
   const [socket, setSocket] = useState<RoomsSocket | null>(null);
-  const [connection, setConnection] = useState<RoomConnection>("connecting");
-  const retriesRef = useRef(0);
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const [suggestions, setSuggestions] = useState<TopicSuggestion[]>([]);
-  const [presence, setPresence] = useState<Record<string, string | undefined>>({});
-  const [endedReport, setEndedReport] = useState<RoomReport | null | undefined>(undefined);
-  const [ended, setEnded] = useState(false);
-  const [removed, setRemoved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [state, dispatch] = useReducer(roomReducer, initialRoomState);
+  const applyRoom = useApplyRoom();
 
+  // Seed history so late joiners see the conversation so far, host lines included.
   useEffect(() => {
     let active = true;
-    let everConnected = false;
-    let s: RoomsSocket | undefined;
+    void roomsApi
+      .getTranscript(roomId, 100)
+      .then((segments) => active && dispatch({ type: "seedTranscript", segments }))
+      .catch(() => {});
+    void roomsApi
+      .getHostMessages(roomId, 100)
+      .then((hostMessages) => active && dispatch({ type: "seedHostMessages", hostMessages }))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [roomId]);
 
-    // Seed suggestions so late joiners see the topics so far.
-    void roomsApi.getSuggestions(roomId, 50).then((s2) => active && setSuggestions(s2)).catch(() => { });
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+    let s: RoomsSocket | undefined;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
     connectRoomsSocket()
       .then((sock) => {
@@ -78,76 +80,39 @@ export function useRoomSocket(roomId: string, isParticipant: boolean): RoomSocke
         socketRef.current = sock;
         setSocket(sock);
 
-        // Socket.IO retries a dropped transport by itself, but not a handshake the
-        // server refused or a server-side disconnect. Those almost always mean an
-        // expired ID token, and the `auth` callback fetches a fresh one — so retry
-        // with backoff, then say so instead of sitting there silently disconnected.
-        const retry = () => {
-          if (!active) return;
-          if (retriesRef.current >= MAX_RETRIES) {
-            setConnection("failed");
-            return;
-          }
-          const delayMs = 1000 * 2 ** retriesRef.current;
-          retriesRef.current += 1;
-          setConnection("reconnecting");
-          retryTimerRef.current = setTimeout(() => {
-            if (active) sock.connect();
-          }, delayMs);
-        };
+        // Fires on every (re)connect, so a dropped connection re-joins by itself.
         sock.on("connect", () => {
-          retriesRef.current = 0;
-          setConnection("connected");
-          // After a reconnect (often onto another API instance), catch up on
-          // whatever changed while we were offline: participants, status, topics.
-          if (everConnected) {
-            void queryClient.invalidateQueries({ queryKey: queryKeys.room(roomId) });
-            void roomsApi
-              .getSuggestions(roomId, 50)
-              .then((s2) => active && setSuggestions(s2))
-              .catch(() => {});
-          }
-          everConnected = true;
+          dispatch({ type: "connected", connected: true });
+          dispatch({ type: "error", message: null });
+          sock.emit("joinRoom", { roomId });
         });
         sock.on("disconnect", (reason) => {
-          if (reason === "io client disconnect") return; // we closed it ourselves
-          setConnection("reconnecting");
-          if (reason === "io server disconnect") retry();
+          dispatch({ type: "connected", connected: false });
+          // socket.io reconnects by itself for every reason except a server-side
+          // disconnect, so handle that one here rather than staying dead.
+          if (reason === "io server disconnect" && active) {
+            dispatch({ type: "error", message: "Disconnected by the server — reconnecting…" });
+            reconnectTimer = setTimeout(() => active && sock.connect(), 1000);
+          }
         });
-        sock.on("connect_error", () => {
-          if (!sock.active) retry(); // refused by the server's auth middleware
-        });
-        sock.on("topicSuggested", (sug) => setSuggestions((p) => upsertById(p, sug)));
-        sock.on("presence", (ev) =>
-          setPresence((prev) => {
-            if (ev.event === "left") {
-              const next = { ...prev };
-              delete next[ev.uid];
-              return next;
-            }
-            return { ...prev, [ev.uid]: ev.name ?? prev[ev.uid] };
-          }),
+        sock.on("connect_error", (e) =>
+          dispatch({ type: "error", message: e?.message ? `Connection failed: ${e.message}` : "Connection failed" }),
         );
-        sock.on("sessionEnded", (e) => {
-          setEnded(true);
-          setEndedReport(e.report ?? null);
-        });
-        sock.on("removedFromRoom", () => setRemoved(true));
-        // Participants and status live in the REST room; refetch it (per-caller view).
-        sock.on("roomUpdated", () => {
-          void queryClient.invalidateQueries({ queryKey: queryKeys.room(roomId) });
-        });
-        // Everyone already here when we (re)joined — replaces what we knew.
-        sock.on("roster", (e) =>
-          setPresence(Object.fromEntries(e.members.map((m) => [m.uid, m.name]))),
-        );
-        sock.on("error", (e) => setError(e.message));
+        // Membership/status/scheduledEndAt come from the Room itself, never from presence.
+        sock.on("roomUpdated", (room) => applyRoom(room));
+        sock.on("transcript", (segment) => dispatch({ type: "transcript", segment }));
+        sock.on("hostMessage", (message) => dispatch({ type: "hostMessage", message }));
+        sock.on("presence", (event) => dispatch({ type: "presence", event }));
+        sock.on("sessionEnded", (event) => dispatch({ type: "sessionEnded", event }));
+        sock.on("error", (e) => dispatch({ type: "error", message: e.message }));
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Could not connect"));
+      .catch((e) =>
+        dispatch({ type: "error", message: e instanceof Error ? e.message : "Could not connect" }),
+      );
 
     return () => {
       active = false;
-      clearTimeout(retryTimerRef.current);
+      clearTimeout(reconnectTimer);
       if (s) {
         try {
           s.emit("leaveRoom", { roomId });
@@ -158,44 +123,38 @@ export function useRoomSocket(roomId: string, isParticipant: boolean): RoomSocke
         s.disconnect();
       }
       socketRef.current = null;
+      setSocket(null);
+      dispatch({ type: "connected", connected: false });
     };
-  }, [roomId, queryClient]);
-
-  const connected = connection === "connected";
-
-  useEffect(() => {
-    if (connected && isParticipant) socketRef.current?.emit("joinRoom", { roomId });
-  }, [connected, isParticipant, roomId]);
-
-  const reconnect = useCallback(() => {
-    const s = socketRef.current;
-    if (!s) return;
-    clearTimeout(retryTimerRef.current);
-    retriesRef.current = 0;
-    setConnection("reconnecting");
-    s.connect();
-  }, []);
+  }, [roomId, enabled, applyRoom]);
 
   const sendTranscript = useCallback(
     (text: string) => {
       const s = socketRef.current;
       const trimmed = text.trim();
-      if (s && trimmed) s.emit("transcript", { roomId, text: trimmed });
+      // Drop rather than let socket.io buffer lines to flush after a reconnect.
+      if (s?.connected && trimmed) s.emit("transcript", { roomId, text: trimmed });
     },
     [roomId],
   );
 
+  const addHostMessage = useCallback(
+    (message: HostMessage) => dispatch({ type: "hostMessage", message }),
+    [],
+  );
+
+  const history = useMemo(
+    () => mergeHistory(state.segments, state.hostMessages),
+    [state.segments, state.hostMessages],
+  );
+  const latest = useMemo(() => latestHostMessage(state.hostMessages), [state.hostMessages]);
+
   return {
+    ...state,
     socket,
-    connected,
-    connection,
-    reconnect,
-    suggestions,
-    presence,
-    endedReport,
-    ended,
-    removed,
-    error,
+    history,
+    latestHostMessage: latest,
+    addHostMessage,
     sendTranscript,
   };
 }

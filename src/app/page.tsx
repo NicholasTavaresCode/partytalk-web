@@ -1,7 +1,7 @@
-import Link from "next/link";
 import type { Metadata } from "next";
-import { ArrowRight, FileText, Mic, UserPlus } from "lucide-react";
-import { Wordmark } from "@/components/brand/Wordmark";
+import { ArrowRight, Sparkles, Users, MessageSquareText, Mic, Globe, Check } from "lucide-react";
+import { SiteLayout } from "@/components/site/SiteLayout";
+import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
 import { Container } from "@/components/ui/Container";
 import { LandingAuthLink } from "@/components/marketing/LandingAuthLink";
@@ -10,7 +10,7 @@ import { IELTS_ENABLED } from "@/lib/features";
 
 export const metadata: Metadata = {
   description:
-    "Open a small live voice room, invite your group and practise English out loud. An AI host brings fresh topics as you talk and leaves everyone a report at the end.",
+    "Join small live rooms to practise English out loud with learners around the world, guided by a friendly AI host.",
 };
 
 const STEPS = [
@@ -19,8 +19,23 @@ const STEPS = [
   { icon: FileText, title: "Get your report", body: "Highlights and tips at the end" },
 ];
 
-/** Staggered entrance for the hero's pieces. */
-const enter = (step: number) => ({ animationDelay: `${step * 90}ms` });
+const FEATURES = [
+  {
+    icon: Mic,
+    title: "Speak from day one",
+    body: "Confidence comes from talking. PartyTalk gets you speaking in your first minute, not your tenth lesson.",
+  },
+  {
+    icon: Sparkles,
+    title: "Gentle, instant feedback",
+    body: "The AI host nudges grammar and pronunciation in the moment — never interrupting the flow of a real chat.",
+  },
+  {
+    icon: Globe,
+    title: "Learners worldwide",
+    body: "Practise with people from dozens of countries and hear English the way it's really spoken.",
+  },
+];
 
 /**
  * The landing page is one screen: what PartyTalk is for, one way in, and a
@@ -43,12 +58,25 @@ export default function HomePage() {
         <div className="bg-dots absolute inset-0" />
       </div>
 
-      <Container className="flex h-16 shrink-0 items-center justify-between">
-        <Link href="/" aria-label="PartyTalk home" className="rounded-lg">
-          <Wordmark onDark />
-        </Link>
-        <LandingAuthLink />
-      </Container>
+        <Container className="relative grid gap-12 py-16 lg:grid-cols-2 lg:items-center lg:py-24">
+          <div className="animate-fade-up">
+            <span className="inline-flex items-center gap-2 rounded-pill border border-outline-variant bg-white px-3.5 py-1.5 text-sm font-medium text-on-surface-variant shadow-sm">
+              <Sparkles className="h-4 w-4 text-primary" />
+              AI-guided group conversation
+            </span>
+            <h1 className="mt-5 font-display text-4xl font-extrabold leading-[1.05] tracking-tight text-primary sm:text-5xl lg:text-6xl">
+              Speak English with the world&nbsp;— not at a screen.
+            </h1>
+            <p className="mt-5 max-w-xl text-lg leading-relaxed text-on-surface-variant">
+              PartyTalk drops you into small live rooms with other learners and a friendly AI host
+              that keeps things flowing, corrects gently, and helps you find the words.
+            </p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Button href="/practice" size="lg">
+                Start a group room
+                <ArrowRight className="h-5 w-5" />
+              </Button>
+            </div>
 
       <Container className="grid flex-1 items-center gap-16 py-8 short:py-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)] lg:py-6 xl:gap-24">
         <div>
@@ -124,15 +152,23 @@ export default function HomePage() {
           </ol>
         </div>
 
-        <div className="hidden justify-center motion-safe:animate-fade-up lg:flex" style={enter(3)}>
-          <RoomPreview className="w-full max-w-[30rem] short:max-w-[26rem]" />
-        </div>
-      </Container>
-
-      <Container className="flex h-12 shrink-0 items-center justify-between text-xs text-white/40">
-        <span>© 2026 PartyTalk</span>
-        <span>Works best in Chrome or Edge</span>
-      </Container>
-    </div>
+      {/* --------------------------------- CTA ----------------------------------- */}
+      <section className="bg-surface-container-low py-20">
+        <Container className="text-center">
+          <h2 className="mx-auto max-w-2xl font-display text-3xl font-extrabold tracking-tight text-primary sm:text-4xl">
+            Your next conversation is one click away.
+          </h2>
+          <p className="mx-auto mt-4 max-w-xl text-lg text-on-surface-variant">
+            No downloads, no waiting. Jump into a live room and start speaking English today.
+          </p>
+          <div className="mt-8 flex justify-center">
+            <Button href="/practice" size="lg">
+              Find a room
+              <ArrowRight className="h-5 w-5" />
+            </Button>
+          </div>
+        </Container>
+      </section>
+    </SiteLayout>
   );
 }

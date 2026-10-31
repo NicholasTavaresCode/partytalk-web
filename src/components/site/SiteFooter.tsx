@@ -9,22 +9,9 @@ const COLUMNS = [
     links: [
       { label: "Group rooms", href: "/practice" },
       { label: "Create a room", href: "/practice" },
+      { label: "How it works", href: "/#how" },
     ],
   },
-  ...(IELTS_ENABLED
-    ? [
-        {
-          title: "IELTS",
-          links: [
-            { label: "IELTS overview", href: "/ielts" },
-            { label: "Listening", href: "/ielts/listening" },
-            { label: "Reading", href: "/ielts/reading" },
-            { label: "Writing", href: "/ielts/writing" },
-            { label: "Speaking", href: "/ielts/speaking" },
-          ],
-        },
-      ]
-    : []),
   {
     title: "Company",
     links: [
@@ -38,12 +25,7 @@ const COLUMNS = [
 export function SiteFooter() {
   return (
     <footer className="border-t border-outline-variant bg-white">
-      <div
-        className={cn(
-          "mx-auto grid max-w-content gap-10 px-6 py-14 lg:px-8",
-          IELTS_ENABLED ? "lg:grid-cols-[1.4fr_repeat(3,1fr)]" : "lg:grid-cols-[1.4fr_repeat(2,1fr)]",
-        )}
-      >
+      <div className="mx-auto grid max-w-content gap-10 px-6 py-14 lg:grid-cols-[1.4fr_repeat(2,1fr)] lg:px-8">
         <div className="max-w-xs">
           <Wordmark />
           <p className="mt-4 text-sm leading-relaxed text-on-surface-variant">

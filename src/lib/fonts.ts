@@ -1,8 +1,7 @@
 import { Arimo, Sora } from "next/font/google";
 
 /**
- * Arimo — the Arial-metric institutional sans used across every IELTS exam
- * surface, mirroring the official computer-delivered interface.
+ * Arimo — the Arial-metric sans used for body text and app surfaces.
  */
 export const arimo = Arimo({
   subsets: ["latin"],

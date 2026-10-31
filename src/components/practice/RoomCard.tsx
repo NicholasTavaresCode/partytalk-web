@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Users, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles, Timer, Users } from "lucide-react";
 import type { Room } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
@@ -30,19 +30,25 @@ export function RoomCard({ room }: { room: Room }) {
           <span className={cn("h-1.5 w-1.5 rounded-full", s.dot, s.live && "animate-pulse")} />
           {s.label}
         </span>
-        <span className="inline-flex items-center gap-1 text-xs font-medium text-on-surface-variant">
-          <Users className="h-3.5 w-3.5" />
-          {room.participantIds.length}/{room.maxParticipants}
+        <span className="inline-flex items-center gap-3 text-xs font-medium text-on-surface-variant">
+          {room.durationMinutes != null && (
+            <span className="inline-flex items-center gap-1">
+              <Timer className="h-3.5 w-3.5" />
+              {room.durationMinutes} min
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1">
+            <Users className="h-3.5 w-3.5" />
+            {room.participantIds.length}/{room.maxParticipants}
+          </span>
         </span>
       </div>
 
       <h3 className="mt-3 line-clamp-2 text-lg font-bold text-on-surface">{room.topic}</h3>
-
-      {room.facilitatorPersona && (
-        <p className="mt-2 line-clamp-2 flex items-start gap-1.5 text-sm leading-relaxed text-on-surface-variant">
-          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          {room.facilitatorPersona}
-        </p>
+      {room.topicPickedByHost && (
+        <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-on-surface-variant">
+          <Sparkles className="h-3.5 w-3.5 text-primary" /> picked by the host
+        </span>
       )}
 
       <div className="mt-5 flex items-center justify-between border-t border-outline-variant pt-4">
