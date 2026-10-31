@@ -9,7 +9,6 @@ const COLUMNS = [
     links: [
       { label: "Group rooms", href: "/practice" },
       { label: "Create a room", href: "/practice" },
-      { label: "How it works", href: "/#how" },
     ],
   },
   ...(IELTS_ENABLED

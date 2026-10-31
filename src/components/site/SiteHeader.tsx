@@ -10,7 +10,6 @@ import { Wordmark } from "@/components/brand/Wordmark";
 import { Button } from "@/components/ui/Button";
 
 const NAV = [
-  { label: "How it works", href: "/#how" },
   { label: "Group Practice", href: "/practice" },
   ...(IELTS_ENABLED ? [{ label: "IELTS Prep", href: "/ielts" }] : []),
 ];

@@ -104,6 +104,10 @@ const config: Config = {
       maxWidth: {
         content: "1200px",
       },
+      screens: {
+        // Laptop-height and small-phone screens, where one-screen layouts tighten up.
+        short: { raw: "(max-height: 760px)" },
+      },
       keyframes: {
         "pulse-ring": {
           "0%, 100%": { opacity: "1", transform: "scale(1)" },
@@ -117,11 +121,28 @@ const config: Config = {
           "0%, 100%": { transform: "translateY(0)" },
           "50%": { transform: "translateY(-10px)" },
         },
+        // Speaking-level bars (scaled from the bottom).
+        eq: {
+          "0%, 100%": { transform: "scaleY(0.3)" },
+          "50%": { transform: "scaleY(1)" },
+        },
+        // Slow drift for the landing page's background glows.
+        aurora: {
+          "0%, 100%": { transform: "translate3d(0, 0, 0) scale(1)" },
+          "50%": { transform: "translate3d(4%, -5%, 0) scale(1.12)" },
+        },
+        "topic-in": {
+          from: { opacity: "0", transform: "translateY(6px)", filter: "blur(4px)" },
+          to: { opacity: "1", transform: "none", filter: "none" },
+        },
       },
       animation: {
         "pulse-ring": "pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
         "fade-up": "fade-up 0.6s ease both",
         float: "float 6s ease-in-out infinite",
+        eq: "eq 0.9s ease-in-out infinite",
+        aurora: "aurora 20s ease-in-out infinite",
+        "topic-in": "topic-in 0.5s ease both",
       },
     },
   },
