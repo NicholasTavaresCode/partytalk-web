@@ -29,12 +29,15 @@ import { useRoomSocket } from "@/lib/useRoomSocket";
 import { useSpeechRecognition } from "@/lib/useSpeechRecognition";
 import { useVoiceMesh } from "@/lib/useVoiceMesh";
 import { useHostVoice } from "@/lib/hostVoice";
+import { useTopicReveal } from "@/lib/topicReveal";
 import { useAudioLevel, useRecentSpeakers } from "@/lib/useSpeaking";
-import { currentTopic } from "@/lib/roomHistory";
+import { currentTopic, latestHostMessage } from "@/lib/roomHistory";
 import { Logo } from "@/components/brand/Logo";
 import { ParticipantAvatar } from "@/components/practice/ParticipantAvatar";
 import { LoadingScreen } from "@/components/app/LoadingScreen";
 import { VoiceBars } from "@/components/practice/room/VoiceBars";
+import { RoomBackdrop } from "./RoomBackdrop";
+import { TopicBurst } from "./TopicBurst";
 import { RoomQuestSummary } from "@/components/quests/RoomQuestSummary";
 import { InvitePanel } from "./InvitePanel";
 import { RoomAccessScreen } from "./RoomAccessScreen";
@@ -47,8 +50,7 @@ const TRIGGER: Record<HostMessageTrigger, string> = {
   manual: "On request",
 };
 
-const clock = (iso: string) =>
-  new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 /**
  * The live room. Rooms are invite-only: the API answers 403 until the signed-in
@@ -100,7 +102,9 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
     if (rt.removed) stt.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `stt` is a fresh object each render
   }, [rt.removed]);
-  const hostVoice = useHostVoice(rt.hostMessages, hostMuted);
+  // A new host line is held back for a short countdown; only then does it show and get spoken.
+  const reveal = useTopicReveal(rt.hostMessages);
+  const hostVoice = useHostVoice(reveal.visible, hostMuted);
   const recent = useRecentSpeakers(rt.segments);
   const qc = useQueryClient();
   const remaining = useCountdown(room?.status === "live" ? room.scheduledEndAt : undefined);
@@ -138,9 +142,10 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
   );
   // Newest first for the host bar's history; already deduped by id.
   const hostHistory = useMemo(
-    () => [...rt.hostMessages].sort((a, b) => b.at.localeCompare(a.at)),
-    [rt.hostMessages],
+    () => [...reveal.visible].sort((a, b) => b.at.localeCompare(a.at)),
+    [reveal.visible],
   );
+  const latestHost = useMemo(() => latestHostMessage(reveal.visible), [reveal.visible]);
 
   if (rt.removed) return <RoomAccessScreen reason="removed" />;
   if (roomErrorStatus === 404) return <RoomAccessScreen reason="not-found" />;
@@ -167,11 +172,11 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
 
   const selfName = me?.displayName ?? user?.displayName ?? "You";
   // `room.topic` is only the opening topic; the host's latest line sets the current one.
-  const topic = currentTopic(rt.hostMessages, room.topic);
+  const topic = currentTopic(reveal.visible, room.topic);
 
   return (
     <div className="relative isolate flex h-[100dvh] flex-col bg-cream text-ink">
-      <div aria-hidden className="bg-dots pointer-events-none absolute inset-0 -z-10" />
+      <RoomBackdrop />
 
       {/* Header, like the landing's: the room, its status and clock, and who can join. */}
       <header className="z-30 flex h-16 shrink-0 items-center justify-between gap-3 border-b border-ink/5 bg-cream/90 px-4 backdrop-blur-md sm:px-6">
@@ -198,12 +203,16 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
               title={room.status === "waiting" ? "Who can join" : "Guest list (locked once the room starts)"}
               className={cn(
                 "inline-flex h-9 items-center gap-1.5 rounded-pill border-2 px-3 font-display text-sm font-bold transition-colors",
-                invitesOpen ? "border-ink bg-ink-fixed text-lime" : "border-ink/15 bg-card text-ink hover:border-ink",
+                invitesOpen
+                  ? "border-ink bg-ink-fixed text-lime"
+                  : "border-ink/15 bg-card text-ink hover:border-ink",
               )}
             >
               <UserPlus className="h-4 w-4" />
               <span className="hidden sm:inline">{room.status === "waiting" ? "Invite" : "Guests"}</span>
-              {!!room.invitedEmails?.length && <span className="opacity-70">{room.invitedEmails.length}</span>}
+              {!!room.invitedEmails?.length && (
+                <span className="opacity-70">{room.invitedEmails.length}</span>
+              )}
             </button>
           )}
         </div>
@@ -217,7 +226,9 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
           topic={topic}
           openingTopic={room.topic}
           openingPickedByHost={room.topicPickedByHost === true}
-          latest={rt.latestHostMessage}
+          latest={latestHost}
+          incoming={reveal.incoming}
+          celebrate={reveal.revealed !== null && reveal.revealed === latestHost?.id ? reveal.revealed : null}
           history={hostHistory}
           speaking={hostVoice.speaking}
           muted={hostMuted}
@@ -230,10 +241,11 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
               gridColsClass(room.participantIds.length),
             )}
           >
-            {room.participantIds.map((uid) =>
+            {room.participantIds.map((uid, i) =>
               uid === user?.uid ? (
                 <SelfTile
                   key={uid}
+                  index={i}
                   name={selfName}
                   owner={uid === room.ownerId}
                   stream={micOn ? voice.localStream : null}
@@ -242,6 +254,7 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
               ) : (
                 <PeerTile
                   key={uid}
+                  index={i}
                   name={rt.presence[uid] ?? "Guest"}
                   owner={uid === room.ownerId}
                   online={rt.presence[uid] !== undefined}
@@ -298,16 +311,24 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
             disabled={!hostVoice.supported}
             onClick={() => setHostMuted((v) => !v)}
           >
-            {hostMuted || !hostVoice.supported ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+            {hostMuted || !hostVoice.supported ? (
+              <VolumeX className="h-5 w-5" />
+            ) : (
+              <Volume2 className="h-5 w-5" />
+            )}
           </CtrlButton>
 
           {isOwner && live && (
             <CtrlButton
               title="Change topic"
-              disabled={changeTopic.isPending}
+              disabled={changeTopic.isPending || !!reveal.incoming}
               onClick={() => changeTopic.mutate(undefined, { onSuccess: (m) => rt.addHostMessage(m) })}
             >
-              {changeTopic.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Shuffle className="h-5 w-5" />}
+              {changeTopic.isPending ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Shuffle className="h-5 w-5" />
+              )}
             </CtrlButton>
           )}
 
@@ -317,7 +338,8 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
               disabled={start.isPending}
               className="inline-flex h-12 items-center gap-2 rounded-pill border-2 border-ink bg-lime px-5 font-display font-bold text-ink-fixed shadow-pop-sm transition-all hover:translate-x-px hover:translate-y-px hover:bg-lime-light hover:shadow-none disabled:opacity-60"
             >
-              <Play className="h-5 w-5" /> {start.isPending ? "Starting…" : "Start"}
+              <Play className={cn("h-5 w-5", !start.isPending && "motion-safe:animate-nudge")} />{" "}
+              {start.isPending ? "Starting…" : "Start"}
             </button>
           )}
 
@@ -339,7 +361,11 @@ export function RoomExperience({ roomId, inviteCode }: { roomId: string; inviteC
               aria-label="Leave"
               className="grid h-12 w-16 place-items-center rounded-pill border-2 border-ink bg-danger text-white shadow-pop-sm transition-all hover:translate-x-px hover:translate-y-px hover:shadow-none disabled:opacity-60"
             >
-              {leave.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <PhoneOff className="h-5 w-5" />}
+              {leave.isPending ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <PhoneOff className="h-5 w-5" />
+              )}
             </button>
           )}
         </div>
@@ -395,6 +421,7 @@ function gridColsClass(n: number): string {
 
 /** A person in the room, as the landing's room card shows them: lime and lifted while they speak. */
 function Tile({
+  index,
   name,
   you = false,
   owner,
@@ -403,6 +430,8 @@ function Tile({
   level,
   status,
 }: {
+  /** Position in the grid: staggers the entrance and the idle bob. */
+  index: number;
   name: string;
   /** Your own tile: the label says so (the avatar keeps your initials). */
   you?: boolean;
@@ -416,18 +445,36 @@ function Tile({
   return (
     <div
       className={cn(
-        "relative flex min-h-[9rem] flex-col items-center justify-center gap-3 rounded-3xl border-2 p-4 transition-all duration-150",
-        speaking
-          ? "-translate-y-0.5 border-ink bg-lime/25 shadow-pop"
-          : "border-ink/10 bg-card",
+        "relative flex min-h-[9rem] flex-col items-center justify-center gap-3 rounded-3xl border-2 p-4 transition-all duration-150 motion-safe:animate-pop-in",
+        speaking ? "-translate-y-0.5 border-ink bg-card bg-gradient-to-b from-lime/25 to-lime/25 shadow-pop" : "border-ink/10 bg-card",
         !online && "opacity-60",
       )}
+      style={{ animationDelay: `${index * 80}ms` }}
     >
-      <ParticipantAvatar
-        name={name}
-        size={80}
-        className={cn("border-2 border-ink transition-transform duration-150", speaking && "scale-105")}
-      />
+      {/* Idle avatars bob out of step with each other; a speaker sends out sound waves. */}
+      <div
+        className={cn("relative", online && "motion-safe:animate-bob")}
+        style={{ animationDelay: `${index * -1.3}s` }}
+      >
+        {speaking && (
+          <>
+            <span aria-hidden className="absolute inset-0 rounded-full bg-lime motion-safe:animate-ripple" />
+            <span
+              aria-hidden
+              className="absolute inset-0 rounded-full bg-lime motion-safe:animate-ripple"
+              style={{ animationDelay: "0.8s" }}
+            />
+          </>
+        )}
+        <ParticipantAvatar
+          name={name}
+          size={80}
+          className={cn(
+            "relative border-2 border-ink transition-transform duration-150",
+            speaking && "scale-105",
+          )}
+        />
+      </div>
       <div className="flex max-w-full flex-col items-center gap-1.5">
         <p className="flex max-w-full items-center gap-1.5 font-display text-sm font-bold text-ink">
           <span className="truncate">{you ? `${name} (You)` : name}</span>
@@ -455,11 +502,13 @@ function Tile({
 
 /** Your own tile: speaking comes from metering the local mic. */
 function SelfTile({
+  index,
   name,
   owner,
   stream,
   micOn,
 }: {
+  index: number;
   name: string;
   owner: boolean;
   stream: MediaStream | null;
@@ -468,6 +517,7 @@ function SelfTile({
   const { level, speaking } = useAudioLevel(stream);
   return (
     <Tile
+      index={index}
       name={name}
       you
       owner={owner}
@@ -483,12 +533,14 @@ function SelfTile({
  * otherwise "speaking" lights up for a few seconds after each transcript line.
  */
 function PeerTile({
+  index,
   name,
   owner,
   online,
   stream,
   recentlySpoke,
 }: {
+  index: number;
   name: string;
   owner: boolean;
   online: boolean;
@@ -499,6 +551,7 @@ function PeerTile({
   const talking = stream ? speaking : recentlySpoke;
   return (
     <Tile
+      index={index}
       name={name}
       owner={owner}
       online={online}
@@ -530,6 +583,8 @@ function HostBanner({
   openingTopic,
   openingPickedByHost,
   latest,
+  incoming,
+  celebrate,
   history,
   speaking,
   muted,
@@ -539,6 +594,10 @@ function HostBanner({
   openingTopic: string;
   openingPickedByHost: boolean;
   latest: HostMessage | undefined;
+  /** A new line the room is counting down to (it isn't shown yet). */
+  incoming: { message: HostMessage; at: number } | null;
+  /** Id of a line that was just revealed: confetti, once. */
+  celebrate: string | null;
   history: HostMessage[];
   speaking: boolean;
   muted: boolean;
@@ -550,38 +609,60 @@ function HostBanner({
     <section
       aria-label="AI host"
       className={cn(
-        "mx-auto w-full max-w-4xl shrink-0 rounded-2xl border-2 border-ink bg-gradient-to-r from-amber-200 via-lime to-lime-light p-3.5 transition-all duration-200",
-        speaking ? "-translate-y-0.5 shadow-pop" : "shadow-pop-sm",
+        "relative mx-auto w-full max-w-4xl shrink-0 rounded-2xl border-2 border-ink bg-gradient-to-r from-amber-200 via-lime to-lime-light p-3.5 transition-all duration-200",
+        speaking || incoming ? "-translate-y-0.5 shadow-pop" : "shadow-pop-sm",
       )}
     >
-      <div className="flex items-start gap-3">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink-fixed text-lime">
-          <GraduationCap className="h-5 w-5" />
+      {/* Now and then a light streak runs across the banner. */}
+      <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-[14px]">
+        <span className="absolute inset-y-0 left-0 hidden w-1/4 bg-gradient-to-r from-transparent via-white/50 to-transparent motion-safe:block motion-safe:animate-sheen" />
+      </span>
+      {celebrate && <TopicBurst key={celebrate} />}
+
+      <div className="relative flex items-start gap-3">
+        <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink-fixed text-lime">
+          {incoming && (
+            <span
+              aria-hidden
+              className="absolute inset-0 rounded-full bg-ink-fixed motion-safe:animate-ping"
+            />
+          )}
+          <GraduationCap className="relative h-5 w-5" />
         </span>
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-pill bg-white px-2 py-px font-label text-[10px] font-bold uppercase tracking-wider text-purple">
-              {latest ? "AI host · New topic" : "AI host · Opening topic"}
+              {latest || incoming ? "AI host · New topic" : "AI host · Opening topic"}
             </span>
             <span className="text-[11px] font-bold text-ink-fixed/70">
-              {speaking
-                ? "Speaking…"
-                : latest
-                  ? `${TRIGGER[latest.trigger]} · ${clock(latest.at)}`
-                  : live
-                    ? "Listening"
-                    : "Starts listening when the room starts"}
+              {incoming
+                ? "Changing the topic…"
+                : speaking
+                  ? "Speaking…"
+                  : latest
+                    ? `${TRIGGER[latest.trigger]} · ${clock(latest.at)}`
+                    : live
+                      ? "Listening"
+                      : "Starts listening when the room starts"}
             </span>
             {muted && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-ink-fixed/70" title="Host voice muted">
+              <span
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-ink-fixed/70"
+                title="Host voice muted"
+              >
                 <VolumeX className="h-3.5 w-3.5" /> muted
               </span>
             )}
           </div>
 
-          {latest ? (
-            <p key={latest.id} className="mt-1.5 font-display text-base font-bold leading-snug text-ink-fixed motion-safe:animate-topic-in sm:text-lg">
+          {incoming ? (
+            <TopicCountdown key={incoming.message.id} at={incoming.at} />
+          ) : latest ? (
+            <p
+              key={latest.id}
+              className="mt-1.5 font-display text-base font-bold leading-snug text-ink-fixed motion-safe:animate-topic-in sm:text-lg"
+            >
               “{latest.message}”
             </p>
           ) : (
@@ -635,6 +716,47 @@ function HostBanner({
   );
 }
 
+/**
+ * 3, 2, 1 before the host's new topic appears, so people can finish their
+ * thought instead of being cut off. A bar drains along with it.
+ */
+function TopicCountdown({ at }: { at: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  const [total] = useState(() => Math.max(0, at - now));
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(id);
+  }, []);
+  const left = Math.max(0, at - now);
+  const seconds = Math.max(1, Math.ceil(left / 1000));
+
+  return (
+    <div className="mt-1.5">
+      <div role="status" className="flex items-center gap-3">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full border-2 border-ink-fixed bg-white font-display text-2xl font-extrabold tabular-nums text-ink-fixed shadow-pop-sm">
+          <span key={seconds} className="motion-safe:animate-count-pop">
+            {seconds}
+          </span>
+        </span>
+        <div className="min-w-0">
+          <p className="font-display text-base font-bold leading-snug text-ink-fixed sm:text-lg">
+            New topic in {seconds}…
+          </p>
+          <p className="text-xs font-semibold text-ink-fixed/70">
+            Finish your thought. The host is about to change the subject.
+          </p>
+        </div>
+      </div>
+      <div aria-hidden className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white/70">
+        <div
+          className="h-full origin-left rounded-full bg-ink-fixed transition-transform duration-100 ease-linear"
+          style={{ transform: `scaleX(${total ? left / total : 0})` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------- Controls -------------------------------- */
 
 function CtrlButton({
@@ -682,7 +804,9 @@ function Countdown({ ms }: { ms: number }) {
       title="Time left in this session"
       className={cn(
         "inline-flex h-9 items-center gap-1 rounded-pill border px-2.5 font-label text-xs font-bold tabular-nums",
-        ms <= 60_000 ? "border-secondary/40 bg-coral/15 text-secondary" : "border-ink/10 bg-card text-on-surface-variant",
+        ms <= 60_000
+          ? "border-secondary/40 bg-coral/15 text-secondary motion-safe:animate-pulse"
+          : "border-ink/10 bg-card text-on-surface-variant",
       )}
     >
       <Timer className="h-3.5 w-3.5" />
@@ -718,18 +842,18 @@ function ReportView({
       </header>
 
       <div className="mx-auto max-w-3xl px-6 py-10">
-        <p className="text-label-caps font-label-caps uppercase text-on-surface-variant">
-          Room · {topic}
-        </p>
+        <p className="text-label-caps font-label-caps uppercase text-on-surface-variant">Room · {topic}</p>
         <h1 className="mt-2 font-display text-4xl font-extrabold tracking-tight text-ink">
           How the session{" "}
-          <span className="inline-block -rotate-1 rounded-xl border-2 border-ink bg-lime px-2 shadow-pop-sm text-ink-fixed">went.</span>
+          <span className="inline-block -rotate-1 rounded-xl border-2 border-ink bg-lime px-2 shadow-pop-sm text-ink-fixed">
+            went.
+          </span>
         </h1>
 
         {!report ? (
           <p className="mt-6 rounded-2xl border-2 border-ink bg-card p-6 text-on-surface-variant shadow-pop">
-            The session ended, but no report was generated (the AI may have been unavailable). Room
-            id: <code className="rounded bg-surface-container px-1">{roomId}</code>
+            The session ended, but no report was generated (the AI may have been unavailable). Room id:{" "}
+            <code className="rounded bg-surface-container px-1">{roomId}</code>
           </p>
         ) : (
           <div className="mt-6 space-y-6">

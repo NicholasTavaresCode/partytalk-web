@@ -164,6 +164,55 @@ const config: Config = {
           from: { opacity: "0", transform: "translateY(6px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
+        // Each number of the new-topic countdown lands big, then settles.
+        "count-pop": {
+          "0%": { opacity: "0", transform: "scale(1.9)" },
+          "35%": { opacity: "1", transform: "scale(0.92)" },
+          "100%": { opacity: "1", transform: "scale(1)" },
+        },
+        // ---- The live room's ambience (all transform/opacity, so it stays cheap during a call) ----
+        // A backdrop glow wandering around its spot.
+        drift: {
+          "0%, 100%": { transform: "translate(0, 0) scale(1)" },
+          "33%": { transform: "translate(8%, -6%) scale(1.12)" },
+          "66%": { transform: "translate(-6%, 7%) scale(0.92)" },
+        },
+        // A bubble floating up the room's edge, fading in and out.
+        rise: {
+          "0%": { transform: "translateY(0)", opacity: "0" },
+          "12%, 82%": { opacity: "1" },
+          "100%": { transform: "translateY(-115vh)", opacity: "0" },
+        },
+        sway: {
+          "0%, 100%": { transform: "translateX(-10px) rotate(-8deg)" },
+          "50%": { transform: "translateX(10px) rotate(8deg)" },
+        },
+        // Idle avatars breathe a little.
+        bob: {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-4px)" },
+        },
+        // Sound waves off a speaker's avatar.
+        ripple: {
+          "0%": { transform: "scale(1)", opacity: "0.6" },
+          "100%": { transform: "scale(1.75)", opacity: "0" },
+        },
+        "pop-in": {
+          "0%": { opacity: "0", transform: "translateY(10px) scale(0.92)" },
+          "60%": { opacity: "1", transform: "translateY(-2px) scale(1.02)" },
+          "100%": { opacity: "1", transform: "translateY(0) scale(1)" },
+        },
+        // A light streak across the host banner, then a long rest.
+        sheen: {
+          "0%": { transform: "translateX(-150%) skewX(-20deg)" },
+          "30%, 100%": { transform: "translateX(450%) skewX(-20deg)" },
+        },
+        // One confetti piece; each sets its own --x/--y/--r.
+        confetti: {
+          "0%": { transform: "translate(0, 0) rotate(0deg) scale(1)", opacity: "1" },
+          "70%": { opacity: "1" },
+          "100%": { transform: "translate(var(--x), var(--y)) rotate(var(--r)) scale(0.6)", opacity: "0" },
+        },
       },
       animation: {
         "pulse-ring": "pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
@@ -175,6 +224,16 @@ const config: Config = {
         "voice-bar": "voice-bar 0.8s ease-in-out infinite",
         eq: "voice-bar 0.8s ease-in-out infinite",
         "topic-in": "topic-in 0.4s ease both",
+        "count-pop": "count-pop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both",
+        drift: "drift 24s ease-in-out infinite",
+        rise: "rise 20s linear infinite",
+        sway: "sway 4s ease-in-out infinite",
+        bob: "bob 5s ease-in-out infinite",
+        ripple: "ripple 1.6s cubic-bezier(0, 0, 0.2, 1) infinite",
+        // `backwards`, not `both`: once in, a tile's own transform (lifted while speaking) applies again.
+        "pop-in": "pop-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) backwards",
+        sheen: "sheen 9s ease-in-out infinite",
+        confetti: "confetti 1.1s cubic-bezier(0.15, 0.7, 0.3, 1) both",
       },
     },
   },

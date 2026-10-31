@@ -11,15 +11,62 @@ export interface SpeechOutput {
   cancel(): void;
 }
 
+/** The fields of a `SpeechSynthesisVoice` that `pickHostVoice` ranks on. */
+export type VoiceInfo = Pick<SpeechSynthesisVoice, "name" | "lang" | "localService" | "voiceURI">;
+
+/** Neural/cloud voices: Edge's "(Natural)", Apple's "(Premium)"/"(Enhanced)", Android's network ones. */
+const NATURAL = /natural|neural|premium|enhanced|online|network/i;
+/** Voices that sound fine though their names don't say so (Chrome's Google voices, Apple's defaults). */
+const DECENT = /^google|samantha|\bava\b|zoe|allison|susan|evan|nathan|serena|daniel|karen|moira|tessa/i;
+/** Formant synthesizers (Linux's default) and Apple's novelty voices: the robotic ones. */
+const ROBOTIC =
+  /espeak|mbrola|festival|\bpico\b|\b(albert|bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|fred|junior|kathy|ralph)\b/i;
+
+const LANG_SCORE: [RegExp, number][] = [
+  [/^en[-_]us$/i, 30],
+  [/^en[-_]gb$/i, 25],
+  [/^en([-_]|$)/i, 15],
+];
+
+/**
+ * The most natural-sounding English voice this browser offers, or null.
+ * Left to itself the browser takes its default voice, which on Linux is a
+ * robotic eSpeak one even when Chrome has Google's own voices on the list.
+ */
+export function pickHostVoice<V extends VoiceInfo>(voices: readonly V[]): V | null {
+  let best: V | null = null;
+  let bestScore = -Infinity;
+  for (const v of voices) {
+    const lang = LANG_SCORE.find(([re]) => re.test(v.lang))?.[1];
+    if (lang === undefined) continue;
+    const label = `${v.name} ${v.voiceURI}`;
+    const score =
+      lang +
+      (NATURAL.test(label) ? 40 : 0) +
+      (DECENT.test(v.name) ? 20 : 0) +
+      (v.localService ? 0 : 10) -
+      (ROBOTIC.test(label) ? 100 : 0);
+    if (score > bestScore) {
+      best = v;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
 /** Wrap the browser's speechSynthesis, or null where it's unavailable (SSR, old browsers). */
 export function browserSpeechOutput(): SpeechOutput | null {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) return null;
   if (typeof SpeechSynthesisUtterance === "undefined") return null;
   const synth = window.speechSynthesis;
+  // Chrome loads its voice list asynchronously, starting on the first call.
+  synth.getVoices();
   return {
     speak(text, { onStart, onEnd }) {
       const u = new SpeechSynthesisUtterance(text);
-      u.lang = "en-US";
+      const voice = pickHostVoice(synth.getVoices());
+      if (voice) u.voice = voice;
+      u.lang = voice?.lang ?? "en-US";
       u.onstart = onStart;
       u.onend = onEnd;
       u.onerror = onEnd;

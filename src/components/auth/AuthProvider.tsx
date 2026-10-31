@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { rememberSession } from "@/lib/sessionHint";
 import { env, googleConfigured } from "@/lib/env";
 import {
   getDevUser,
@@ -38,7 +39,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsub = onAuthChange((u) => {
       setUser(u);
       setLoading(false);
-      if (u) setSigningOut(false);
+      if (u) {
+        setSigningOut(false);
+        rememberSession(true);
+      }
     });
     // Silently restore a returning user; stop the spinner regardless of outcome.
     restoreSession()
@@ -52,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // doesn't come through here: it stays put and shows the sign-in screen.
   const signOut = useCallback(async () => {
     setSigningOut(true);
+    rememberSession(false);
     router.replace("/");
     await gisSignOut();
   }, [router]);

@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { FRESH_WINDOW_MS, createHostSpeaker, type SpeechOutput } from "./hostVoice";
+import {
+  FRESH_WINDOW_MS,
+  createHostSpeaker,
+  pickHostVoice,
+  type SpeechOutput,
+  type VoiceInfo,
+} from "./hostVoice";
 import type { HostMessage } from "./types";
 
 const NOW = Date.parse("2026-09-13T10:00:00Z");
@@ -78,5 +84,57 @@ describe("host speaker", () => {
   it("is a no-op without speech support", () => {
     const speaker = make(null);
     expect(speaker.onMessages([host("h1", 1000)])).toEqual([]);
+  });
+});
+
+const voice = (name: string, lang: string, localService = true, voiceURI = name): VoiceInfo => ({
+  name,
+  lang,
+  localService,
+  voiceURI,
+});
+
+describe("pickHostVoice", () => {
+  it("prefers Chrome's Google voice over Linux's eSpeak default", () => {
+    const voices = [
+      voice("English (America)", "en-US", true, "espeak-ng English (America)"),
+      voice("Google Deutsch", "de-DE", false),
+      voice("Google UK English Female", "en-GB", false),
+      voice("Google US English", "en-US", false),
+    ];
+    expect(pickHostVoice(voices)?.name).toBe("Google US English");
+  });
+
+  it("prefers Edge's natural voices over its older local ones", () => {
+    const voices = [
+      voice("Microsoft David - English (United States)", "en-US"),
+      voice("Microsoft Zira - English (United States)", "en-US"),
+      voice("Microsoft Aria Online (Natural) - English (United States)", "en-US", false),
+    ];
+    expect(pickHostVoice(voices)?.name).toContain("Aria Online (Natural)");
+  });
+
+  it("prefers Apple's premium voices and never picks a novelty one", () => {
+    const voices = [
+      voice("Zarvox", "en-US"),
+      voice("Bad News", "en-US"),
+      voice("Samantha", "en-US"),
+      voice("Ava (Premium)", "en-US"),
+    ];
+    expect(pickHostVoice(voices)?.name).toBe("Ava (Premium)");
+    expect(pickHostVoice(voices.slice(0, 3))?.name).toBe("Samantha");
+  });
+
+  it("takes Android's network voices over its local ones", () => {
+    const voices = [
+      voice("English United States", "en-US", true, "en-us-x-sfg-local"),
+      voice("English United States", "en_US", false, "en-us-x-iob-network"),
+    ];
+    expect(pickHostVoice(voices)?.voiceURI).toBe("en-us-x-iob-network");
+  });
+
+  it("returns null when there is no English voice (or no list yet)", () => {
+    expect(pickHostVoice([voice("Google Deutsch", "de-DE", false)])).toBeNull();
+    expect(pickHostVoice([])).toBeNull();
   });
 });
