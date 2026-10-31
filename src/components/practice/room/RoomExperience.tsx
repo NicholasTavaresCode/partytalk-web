@@ -613,20 +613,13 @@ function HostBanner({
     <section
       aria-label="AI host"
       className={cn(
-        "relative mx-auto w-full max-w-4xl shrink-0 rounded-2xl border-2 border-ink bg-gradient-to-r from-amber-200 via-lime to-lime-light p-3.5 transition-all duration-200 motion-safe:animate-pop-in",
+        "relative mx-auto w-full max-w-4xl shrink-0 rounded-2xl border-2 border-ink bg-gradient-to-r from-amber-200 via-lime to-lime-light p-3.5 transition-all duration-200",
         speaking || incoming ? "-translate-y-0.5 shadow-pop" : "shadow-pop-sm",
       )}
     >
-      {/* The gradient slowly slides to and fro, and now and then a light streak runs across. Clipped
-          with clip-path, not overflow + border-radius: Chrome lets a moving layer bleed over a rounded
-          overflow clip, which smeared the card's border. */}
-      <span aria-hidden className="pointer-events-none absolute inset-0 [clip-path:inset(0_round_14px)]">
-        <span className="absolute inset-y-0 left-0 w-[200%] bg-[linear-gradient(90deg,#fde68a,#d2e823_30%,#e4f738_55%,#d2e823_78%,#fde68a)] motion-safe:animate-gradient-pan" />
-        <span className="absolute inset-y-0 left-0 hidden w-1/4 bg-gradient-to-r from-transparent via-white/50 to-transparent motion-safe:block motion-safe:animate-sheen" />
-      </span>
       {celebrate && <TopicBurst key={celebrate} />}
 
-      <div className="relative flex items-start gap-3">
+      <div className="flex items-start gap-3">
         <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink-fixed text-lime">
           {incoming && (
             <span
@@ -634,23 +627,7 @@ function HostBanner({
               className="absolute inset-0 rounded-full bg-ink-fixed motion-safe:animate-ping"
             />
           )}
-          {speaking && !incoming && (
-            <>
-              <span
-                aria-hidden
-                className="absolute inset-0 rounded-full bg-white motion-safe:animate-ripple"
-              />
-              <span
-                aria-hidden
-                className="absolute inset-0 rounded-full bg-white motion-safe:animate-ripple"
-                style={{ animationDelay: "0.8s" }}
-              />
-            </>
-          )}
-          <span className="absolute inset-0 rounded-full bg-ink-fixed" />
-          <GraduationCap
-            className={cn("relative h-5 w-5", live && !speaking && !incoming && "motion-safe:animate-tilt")}
-          />
+          <GraduationCap className="relative h-5 w-5" />
         </span>
 
         <div className="min-w-0 flex-1">
@@ -669,16 +646,6 @@ function HostBanner({
                       ? "Listening"
                       : "Starts listening when the room starts"}
             </span>
-            {live &&
-              !incoming &&
-              (speaking ? (
-                // An ink ring keeps the lime disc visible on the lime banner.
-                <span className="rounded-full bg-ink-fixed p-0.5">
-                  <VoiceBars size={18} />
-                </span>
-              ) : (
-                <ListeningDots />
-              ))}
             {muted && (
               <span
                 className="inline-flex items-center gap-1 text-[11px] font-bold text-ink-fixed/70"
@@ -746,21 +713,6 @@ function HostBanner({
         </div>
       </div>
     </section>
-  );
-}
-
-/** Three dots bouncing in turn: the host is listening. */
-function ListeningDots() {
-  return (
-    <span role="img" aria-label="Listening" className="inline-flex items-center gap-[3px]">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="h-1.5 w-1.5 rounded-full bg-ink-fixed/60 motion-safe:animate-typing-dot"
-          style={{ animationDelay: `${i * 0.18}s` }}
-        />
-      ))}
-    </span>
   );
 }
 

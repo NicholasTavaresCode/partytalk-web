@@ -186,23 +186,6 @@ const config: Config = {
           "60%": { opacity: "1", transform: "translateY(-2px) scale(1.02)" },
           "100%": { opacity: "1", transform: "translateY(0) scale(1)" },
         },
-        // The host banner's gradient layer (twice its width) sliding to and fro.
-        "gradient-pan": {
-          from: { transform: "translateX(0)" },
-          to: { transform: "translateX(-50%)" },
-        },
-        // The host's badge nods along now and then while it listens.
-        tilt: {
-          "0%, 70%, 100%": { transform: "rotate(0deg)" },
-          "76%": { transform: "rotate(-14deg)" },
-          "84%": { transform: "rotate(9deg)" },
-          "92%": { transform: "rotate(-4deg)" },
-        },
-        // A light streak across the host banner, then a long rest.
-        sheen: {
-          "0%": { transform: "translateX(-150%) skewX(-20deg)" },
-          "30%, 100%": { transform: "translateX(450%) skewX(-20deg)" },
-        },
         // One confetti piece; each sets its own --x/--y/--r.
         confetti: {
           "0%": { transform: "translate(0, 0) rotate(0deg) scale(1)", opacity: "1" },
@@ -225,9 +208,6 @@ const config: Config = {
         ripple: "ripple 1.6s cubic-bezier(0, 0, 0.2, 1) infinite",
         // `backwards`, not `both`: once in, a tile's own transform (lifted while speaking) applies again.
         "pop-in": "pop-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) backwards",
-        sheen: "sheen 9s ease-in-out infinite",
-        "gradient-pan": "gradient-pan 14s ease-in-out infinite alternate",
-        tilt: "tilt 5s ease-in-out infinite",
         confetti: "confetti 1.1s cubic-bezier(0.15, 0.7, 0.3, 1) both",
       },
     },
